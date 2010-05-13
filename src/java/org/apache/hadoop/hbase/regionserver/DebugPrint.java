@@ -54,7 +54,7 @@ private static final AtomicBoolean enabled = new AtomicBoolean(false);
       System.out.println(m);
       return;
     }
-
+    
     synchronized (sync) {
       String threadName = Thread.currentThread().getName();
       out.append("<");

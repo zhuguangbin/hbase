@@ -21,11 +21,9 @@ package org.apache.hadoop.hbase.regionserver;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.TreeMap;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -54,6 +52,7 @@ import org.apache.hadoop.hbase.filter.FilterList;
 import org.apache.hadoop.hbase.filter.PrefixFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
+import org.apache.hadoop.hbase.filter.RowFilter;
 import org.apache.hadoop.hbase.regionserver.HRegion.RegionScanner;
 import org.apache.hadoop.hbase.util.Bytes;
 
@@ -470,7 +469,6 @@ public class TestHRegion extends HBaseTestCase {
 
     region.put(put);
 
-    // We do support deleting more than 1 'latest' version
     Delete delete = new Delete(row1);
     delete.deleteColumn(fam1, qual);
     delete.deleteColumn(fam1, qual);
@@ -501,9 +499,7 @@ public class TestHRegion extends HBaseTestCase {
     //testing existing family
     byte [] family = fam2;
     try {
-      Map<byte[], List<KeyValue>> deleteMap = new HashMap<byte[], List<KeyValue>>();
-      deleteMap.put(family, kvs);
-      region.delete(deleteMap, true);
+      region.delete(family, kvs, true);
     } catch (Exception e) {
       assertTrue("Family " +new String(family)+ " does not exist", false);
     }
@@ -512,9 +508,7 @@ public class TestHRegion extends HBaseTestCase {
     boolean ok = false; 
     family = fam4;
     try {
-      Map<byte[], List<KeyValue>> deleteMap = new HashMap<byte[], List<KeyValue>>();
-      deleteMap.put(family, kvs);
-      region.delete(deleteMap, true);
+      region.delete(family, kvs, true);
     } catch (Exception e) {
       ok = true;
     }
@@ -715,9 +709,7 @@ public class TestHRegion extends HBaseTestCase {
     kvs.add(new KeyValue(row1, fam1, col2, null));
     kvs.add(new KeyValue(row1, fam1, col3, null));
 
-    Map<byte[], List<KeyValue>> deleteMap = new HashMap<byte[], List<KeyValue>>();
-    deleteMap.put(fam1, kvs);
-    region.delete(deleteMap, true);
+    region.delete(fam1, kvs, true);
 
     // extract the key values out the memstore:
     // This is kinda hacky, but better than nothing...
@@ -2087,9 +2079,9 @@ public class TestHRegion extends HBaseTestCase {
     FlushThread flushThread = new FlushThread();
     flushThread.start();
 
-    Scan scan = new Scan(Bytes.toBytes("row0"), Bytes.toBytes("row1"));
-//    scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL,
-//      new BinaryComparator(Bytes.toBytes("row0"))));
+    Scan scan = new Scan();
+    scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL,
+      new BinaryComparator(Bytes.toBytes("row0"))));
 
     int expectedCount = numFamilies * numQualifiers;
     List<KeyValue> res = new ArrayList<KeyValue>();
@@ -2120,9 +2112,6 @@ public class TestHRegion extends HBaseTestCase {
     }
 
     putThread.done();
-
-    region.flushcache();
-
     putThread.join();
     putThread.checkNoError();
 
@@ -2132,7 +2121,7 @@ public class TestHRegion extends HBaseTestCase {
   }
 
   protected class PutThread extends Thread {
-    private volatile boolean done;
+    private final AtomicBoolean done = new AtomicBoolean(false);
     private Throwable error = null;
     private int numRows;
     private byte[][] families;
@@ -2146,10 +2135,7 @@ public class TestHRegion extends HBaseTestCase {
     }
 
     public void done() {
-      done = true;
-      synchronized (this) {
-        interrupt();
-      }
+      done.set(true);
     }
 
     public void checkNoError() {
@@ -2160,9 +2146,9 @@ public class TestHRegion extends HBaseTestCase {
 
     @Override
     public void run() {
-      done = false;
+      done.set(false);
       int val = 0;
-      while (!done) {
+      while (!done.get()) {
         try {
           for (int r = 0; r < numRows; r++) {
             byte[] row = Bytes.toBytes("row" + r);
@@ -2240,7 +2226,7 @@ public class TestHRegion extends HBaseTestCase {
       }
 
       if (i != 0 && i % flushInterval == 0) {
-        //System.out.println("iteration = " + i);
+        System.out.println("iteration = " + i);
         flushThread.flush();
       }
 
@@ -2265,9 +2251,6 @@ public class TestHRegion extends HBaseTestCase {
     }
 
     putThread.done();
-    
-    region.flushcache();
-
     putThread.join();
     putThread.checkNoError();
 

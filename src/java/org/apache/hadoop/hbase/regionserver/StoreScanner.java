@@ -30,6 +30,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.io.hfile.HFile;
+import org.apache.hadoop.hbase.io.hfile.HFileScanner;
 
 /**
  * Scanner scans both the memstore and the HStore. Coaleace KeyValue stream
@@ -54,6 +56,7 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
    * @param columns which columns we are scanning
    */
   StoreScanner(Store store, Scan scan, final NavigableSet<byte[]> columns) {
+    //DebugPrint.println("SS new");
     this.store = store;
     this.cacheBlocks = scan.getCacheBlocks();
     matcher = new ScanQueryMatcher(scan, store.getFamily().getName(),
@@ -70,20 +73,22 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
     }
 
     // Combine all seeked scanners with a heap
-    heap = new KeyValueHeap(scanners, store.comparator);
+    heap = new KeyValueHeap(
+      scanners.toArray(new KeyValueScanner[scanners.size()]), store.comparator);
 
     this.store.addChangedReaderObserver(this);
+
   }
 
   /**
    * Used for major compactions.<p>
-   *
+   * 
    * Opens a scanner across specified StoreFiles.
    * @param store who we scan
    * @param scan the spec
    * @param scanners ancilliary scanners
    */
-  StoreScanner(Store store, Scan scan, List<KeyValueScanner> scanners) {
+  StoreScanner(Store store, Scan scan, KeyValueScanner [] scanners) {
     this.store = store;
     this.cacheBlocks = false;
     this.isGet = false;
@@ -104,11 +109,11 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
   StoreScanner(final Scan scan, final byte [] colFamily, final long ttl,
       final KeyValue.KVComparator comparator,
       final NavigableSet<byte[]> columns,
-      final List<KeyValueScanner> scanners) {
+      final KeyValueScanner [] scanners) {
     this.store = null;
     this.isGet = false;
     this.cacheBlocks = scan.getCacheBlocks();
-    this.matcher = new ScanQueryMatcher(scan, colFamily, columns, ttl,
+    this.matcher = new ScanQueryMatcher(scan, colFamily, columns, ttl, 
         comparator.getRawComparator(), scan.getMaxVersions());
 
     // Seek all scanners to the initial key
@@ -122,13 +127,11 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
    * @return List of scanners ordered properly.
    */
   private List<KeyValueScanner> getScanners() {
-    // First the store file scanners
-    Map<Long, StoreFile> map = this.store.getStorefiles().descendingMap();
-    List<KeyValueScanner> scanners =
-      StoreFileScanner.getScannersForStoreFiles(map.values(),
-      cacheBlocks, isGet);
-    // Then the memstore scanners
-    scanners.addAll(this.store.memstore.getScanners());
+    List<KeyValueScanner> scanners = getStoreFileScanners();
+    KeyValueScanner [] memstorescanners = this.store.memstore.getScanners();
+    for (int i = memstorescanners.length - 1; i >= 0; i--) {
+      scanners.add(memstorescanners[i]);
+    }
     return scanners;
   }
 
@@ -157,10 +160,9 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
   /**
    * Get the next row of values from this Store.
    * @param outResult
-   * @param limit
    * @return true if there are more rows, false if scanner is done
    */
-  public synchronized boolean next(List<KeyValue> outResult, int limit) throws IOException {
+  public synchronized boolean next(List<KeyValue> outResult) throws IOException {
     //DebugPrint.println("SS.next");
     KeyValue peeked = this.heap.peek();
     if (peeked == null) {
@@ -170,18 +172,15 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
     matcher.setRow(peeked.getRow());
     KeyValue kv;
     List<KeyValue> results = new ArrayList<KeyValue>();
-    LOOP: while((kv = this.heap.peek()) != null) {
+    while((kv = this.heap.peek()) != null) {
       QueryMatcher.MatchCode qcode = matcher.match(kv);
       //DebugPrint.println("SS peek kv = " + kv + " with qcode = " + qcode);
       switch(qcode) {
         case INCLUDE:
           KeyValue next = this.heap.next();
           results.add(next);
-          if (limit > 0 && (results.size() == limit)) {
-            break LOOP;
-          }
           continue;
-
+          
         case DONE:
           // copy jazz
           outResult.addAll(results);
@@ -209,12 +208,12 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
         case SKIP:
           this.heap.next();
           break;
-
+          
         default:
           throw new RuntimeException("UNEXPECTED");
       }
     }
-
+    
     if (!results.isEmpty()) {
       // copy jazz
       outResult.addAll(results);
@@ -226,8 +225,25 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
     return false;
   }
 
-  public synchronized boolean next(List<KeyValue> outResult) throws IOException {
-    return next(outResult, -1);
+  private List<KeyValueScanner> getStoreFileScanners() {
+    List<HFileScanner> s =
+      new ArrayList<HFileScanner>(this.store.getStorefilesCount());
+    Map<Long, StoreFile> map = this.store.getStorefiles().descendingMap();
+    for(StoreFile sf : map.values()) {
+      HFile.Reader r = sf.getReader();
+      if (r == null) {
+        LOG.warn("StoreFile " + sf + " has null Reader");
+        continue;
+      }
+      // If isGet, use pread, else false, dont use pread
+      s.add(r.getScanner(this.cacheBlocks, isGet));
+    }
+    List<KeyValueScanner> scanners =
+      new ArrayList<KeyValueScanner>(s.size()+1);
+    for(HFileScanner hfs : s) {
+      scanners.add(new StoreFileScanner(hfs));
+    }
+    return scanners;
   }
 
   // Implementation of ChangedReadersObserver
@@ -236,18 +252,23 @@ class StoreScanner implements KeyValueScanner, InternalScanner, ChangedReadersOb
     KeyValue topKey = this.peek();
     if (topKey == null) return;
 
+    //DebugPrint.println("SS updateReaders, topKey = " + topKey);
+
+    // TODO perhaps do something more elegant than new-memstore scanner like adjust with a seek?
+
+    // close the previous scanners:
+    this.heap.close(); // bubble thru and close all scanners.
+    this.heap = null; // the re-seeks could be slow, free up memory ASAP.
+
     List<KeyValueScanner> scanners = getScanners();
 
     for(KeyValueScanner scanner : scanners) {
       scanner.seek(topKey);
     }
 
-    // close the previous scanners:
-    this.heap.close(); // bubble thru and close all scanners.
-    this.heap = null; // the re-seeks could be slow (access HDFS) free up memory ASAP
-
     // Combine all seeked scanners with a heap
-    heap = new KeyValueHeap(scanners, store.comparator);
+    heap = new KeyValueHeap(
+        scanners.toArray(new KeyValueScanner[scanners.size()]), store.comparator);
 
     // Reset the state of the Query Matcher and set to top row
     matcher.reset();

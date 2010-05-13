@@ -26,7 +26,7 @@ import org.apache.hadoop.hbase.regionserver.QueryMatcher.MatchCode;
 import org.apache.hadoop.hbase.util.Bytes;
 
 /**
- * This class is used for the tracking and enforcement of columns and numbers
+ * This class is used for the tracking and enforcement of columns and numbers 
  * of versions during the course of a Get or Scan operation, when explicit
  * column qualifiers have been asked for in the query.
  *
@@ -34,7 +34,7 @@ import org.apache.hadoop.hbase.util.Bytes;
  * for both scans and gets.  The main difference is 'next' and 'done' collapse
  * for the scan case (since we see all columns in order), and we only reset
  * between rows.
- *
+ * 
  * <p>
  * This class is utilized by {@link QueryMatcher} through two methods:
  * <ul><li>{@link #checkColumn} is called when a Put satisfies all other
@@ -42,16 +42,16 @@ import org.apache.hadoop.hbase.util.Bytes;
  * what action should be taken.
  * <li>{@link #update} is called at the end of every StoreFile or memstore.
  * <p>
- * This class is NOT thread-safe as queries are never multi-threaded
+ * This class is NOT thread-safe as queries are never multi-threaded 
  */
 public class ExplicitColumnTracker implements ColumnTracker {
 
-  private final int maxVersions;
-  private final List<ColumnCount> columns;
-  private final List<ColumnCount> columnsToReuse;
+  private int maxVersions;
+  private List<ColumnCount> columns;
   private int index;
   private ColumnCount column;
-
+  private NavigableSet<byte[]> origColumns;
+  
   /**
    * Default constructor.
    * @param columns columns specified user in query
@@ -59,14 +59,10 @@ public class ExplicitColumnTracker implements ColumnTracker {
    */
   public ExplicitColumnTracker(NavigableSet<byte[]> columns, int maxVersions) {
     this.maxVersions = maxVersions;
-    this.columns = new ArrayList<ColumnCount>(columns.size());
-    this.columnsToReuse = new ArrayList<ColumnCount>(columns.size());
-    for(byte [] column : columns) {
-      this.columnsToReuse.add(new ColumnCount(column,maxVersions));
-    }
+    this.origColumns = columns;
     reset();
   }
-
+  
   /**
    * Done when there are no more columns to match against.
    */
@@ -77,7 +73,7 @@ public class ExplicitColumnTracker implements ColumnTracker {
   public ColumnCount getColumnHint() {
     return this.column;
   }
-
+  
   /**
    * Checks against the parameters of the query and the columns which have
    * already been processed by this query.
@@ -87,6 +83,7 @@ public class ExplicitColumnTracker implements ColumnTracker {
    * @return MatchCode telling QueryMatcher what action to take
    */
   public MatchCode checkColumn(byte [] bytes, int offset, int length) {
+    boolean recursive = false;
     do {
       // No more columns left, we are done with this query
       if(this.columns.size() == 0) {
@@ -117,12 +114,6 @@ public class ExplicitColumnTracker implements ColumnTracker {
         return MatchCode.INCLUDE;
       }
 
-
-      if (ret > 0) {
-         // Specified column is smaller than the current, skip to next column.
-        return MatchCode.SKIP;
-      }
-
       // Specified column is bigger than current column
       // Move down current column and check again
       if(ret <= -1) {
@@ -130,12 +121,16 @@ public class ExplicitColumnTracker implements ColumnTracker {
           // No more to match, do not include, done with storefile
           return MatchCode.NEXT; // done_row
         }
-        // This is the recursive case.
         this.column = this.columns.get(this.index);
+        recursive = true;
+        continue;
       }
-    } while(true);
+    } while (recursive);
+    // Specified column is smaller than current column
+    // Skip
+    return MatchCode.SKIP; // skip to next column, with hint?
   }
-
+  
   /**
    * Called at the end of every StoreFile or memstore.
    */
@@ -151,16 +146,15 @@ public class ExplicitColumnTracker implements ColumnTracker {
 
   // Called between every row.
   public void reset() {
-    buildColumnList();
+    buildColumnList(this.origColumns);
     this.index = 0;
     this.column = this.columns.get(this.index);
   }
 
-  private void buildColumnList() {
-    this.columns.clear();
-    this.columns.addAll(this.columnsToReuse);
-    for(ColumnCount col : this.columns) {
-      col.setCount(this.maxVersions);
+  private void buildColumnList(NavigableSet<byte[]> columns) {
+    this.columns = new ArrayList<ColumnCount>(columns.size());
+    for(byte [] column : columns) {
+      this.columns.add(new ColumnCount(column,maxVersions));
     }
   }
 }

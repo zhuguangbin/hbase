@@ -78,8 +78,6 @@ import org.apache.hadoop.hbase.HMsg.Type;
 import org.apache.hadoop.hbase.Leases.LeaseStillHeldException;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.MultiPut;
-import org.apache.hadoop.hbase.client.MultiPutResponse;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
@@ -119,14 +117,14 @@ public class HRegionServer implements HConstants, HRegionInterface,
   private static final HMsg REPORT_EXITING = new HMsg(Type.MSG_REPORT_EXITING);
   private static final HMsg REPORT_QUIESCED = new HMsg(Type.MSG_REPORT_QUIESCED);
   private static final HMsg [] EMPTY_HMSG_ARRAY = new HMsg [] {};
-
+  
   // Set when a report to the master comes back with a message asking us to
   // shutdown.  Also set by call to stop when debugging or running unit tests
   // of HRegionServer in isolation. We use AtomicBoolean rather than
   // plain boolean so we can pass a reference to Chore threads.  Otherwise,
   // Chore threads need to know about the hosting class.
   protected final AtomicBoolean stopRequested = new AtomicBoolean(false);
-
+  
   protected final AtomicBoolean quiesced = new AtomicBoolean(false);
 
   protected final AtomicBoolean safeMode = new AtomicBoolean(true);
@@ -134,12 +132,10 @@ public class HRegionServer implements HConstants, HRegionInterface,
   // Go down hard.  Used if file system becomes unavailable and also in
   // debugging and unit tests.
   protected volatile boolean abortRequested;
-
-  private volatile boolean killed = false;
-
+  
   // If false, the file system has become unavailable
   protected volatile boolean fsOk;
-
+  
   protected HServerInfo serverInfo;
   protected final HBaseConfiguration conf;
 
@@ -167,17 +163,17 @@ public class HRegionServer implements HConstants, HRegionInterface,
   protected final int numRegionsToReport;
 
   private final long maxScannerResultSize;
-
+  
   // Remote HMaster
   private HMasterRegionInterface hbaseMaster;
 
   // Server to handle client requests.  Default access so can be accessed by
   // unit tests.
   HBaseServer server;
-
+  
   // Leases
   private Leases leases;
-
+  
   // Request counter
   private volatile AtomicInteger requestCount = new AtomicInteger();
 
@@ -185,25 +181,25 @@ public class HRegionServer implements HConstants, HRegionInterface,
   // is name of the webapp and the attribute name used stuffing this instance
   // into web context.
   InfoServer infoServer;
-
+  
   /** region server process name */
   public static final String REGIONSERVER = "regionserver";
-
+  
   /*
    * Space is reserved in HRS constructor and then released when aborting
    * to recover from an OOME. See HBASE-706.  TODO: Make this percentage of the
    * heap or a minimum.
    */
   private final LinkedList<byte[]> reservedSpace = new LinkedList<byte []>();
-
+  
   private RegionServerMetrics metrics;
 
   // Compactions
   CompactSplitThread compactSplitThread;
 
-  // Cache flushing
+  // Cache flushing  
   MemStoreFlusher cacheFlusher;
-
+  
   /* Check for major compactions.
    */
   Chore majorCompactionChecker;
@@ -212,7 +208,8 @@ public class HRegionServer implements HConstants, HRegionInterface,
   // eclipse warning when accessed by inner classes
   protected volatile HLog hlog;
   LogRoller hlogRoller;
-
+  LogFlusher hlogFlusher;
+  
   // flag set after we're done setting up server threads (used for testing)
   protected volatile boolean isOnline;
 
@@ -226,9 +223,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
 
   private final long rpcTimeout;
 
-  // Address passed in to constructor.  This is not always the address we run
-  // with.  For example, if passed port is 0, then we are to pick a port.  The
-  // actual address we run with is in the #serverInfo data member.
+  // Address passed in to constructor.
   private final HServerAddress address;
 
   // The main region server thread.
@@ -236,7 +231,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
 
   // Run HDFS shutdown thread on exit if this is set. We clear this out when
   // doing a restart() to prevent closing of HDFS.
-  public final AtomicBoolean shutdownHDFS = new AtomicBoolean(true);
+  private final AtomicBoolean shutdownHDFS = new AtomicBoolean(true);
 
   private final String machineName;
 
@@ -249,13 +244,9 @@ public class HRegionServer implements HConstants, HRegionInterface,
     machineName = DNS.getDefaultHost(
         conf.get("hbase.regionserver.dns.interface","default"),
         conf.get("hbase.regionserver.dns.nameserver","default"));
-    String addressStr = machineName + ":" +
+    String addressStr = machineName + ":" + 
       conf.get(REGIONSERVER_PORT, Integer.toString(DEFAULT_REGIONSERVER_PORT));
-    // This is not necessarily the address we will run with.  The address we
-    // use will be in #serverInfo data member.  For example, we may have been
-    // passed a port of 0 which means we should pick some ephemeral port to bind
-    // to.
-    address = new HServerAddress(addressStr);
+    this.address = new HServerAddress(addressStr);
     LOG.info("My address is " + address);
 
     this.abortRequested = false;
@@ -264,7 +255,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
     this.connection = ServerConnectionManager.getConnection(conf);
 
     this.isOnline = false;
-
+    
     // Config'ed params
     this.numRetries =  conf.getInt("hbase.client.retries.number", 2);
     this.threadWakeFrequency = conf.getInt(THREAD_WAKE_FREQUENCY, 10 * 1000);
@@ -275,14 +266,14 @@ public class HRegionServer implements HConstants, HRegionInterface,
     sleeper = new Sleeper(this.msgInterval, this.stopRequested);
 
     this.maxScannerResultSize = conf.getLong(
-            HConstants.HBASE_CLIENT_SCANNER_MAX_RESULT_SIZE_KEY,
+            HConstants.HBASE_CLIENT_SCANNER_MAX_RESULT_SIZE_KEY, 
             HConstants.DEFAULT_HBASE_CLIENT_SCANNER_MAX_RESULT_SIZE);
-
+              
     // Task thread to process requests from Master
     this.worker = new Worker();
 
-    this.numRegionsToReport =
-      conf.getInt("hbase.regionserver.numregionstoreport", 10);
+    this.numRegionsToReport =                                        
+      conf.getInt("hbase.regionserver.numregionstoreport", 10);      
 
     this.rpcTimeout = conf.getLong("hbase.regionserver.lease.period", 60000);
 
@@ -301,7 +292,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
     this.shutdownHDFS.set(true);
 
     // Server to handle client requests
-    this.server = HBaseRPC.getServer(this, address.getBindAddress(),
+    this.server = HBaseRPC.getServer(this, address.getBindAddress(), 
       address.getPort(), conf.getInt("hbase.regionserver.handler.count", 10),
       false, conf);
     this.server.setErrorHandler(this);
@@ -333,13 +324,17 @@ public class HRegionServer implements HConstants, HRegionInterface,
 
     // Cache flushing thread.
     this.cacheFlusher = new MemStoreFlusher(conf, this);
-
+    
     // Compaction thread
     this.compactSplitThread = new CompactSplitThread(this);
-
+    
     // Log rolling thread
     this.hlogRoller = new LogRoller(this);
-
+    
+    // Log flushing thread
+    this.hlogFlusher =
+      new LogFlusher(this.threadWakeFrequency, this.stopRequested);
+    
     // Background thread to check for major compactions; needed if region
     // has not gotten updates in a while.  Make it run at a lesser frequency.
     int multiplier = this.conf.getInt(THREAD_WAKE_FREQUENCY +
@@ -424,7 +419,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
 
   /**
    * The HRegionServer sticks in this loop until closed. It repeatedly checks
-   * in with the HMaster, sending heartbeats & reports, and receiving HRegion
+   * in with the HMaster, sending heartbeats & reports, and receiving HRegion 
    * load/unload instructions.
    */
   public void run() {
@@ -527,10 +522,11 @@ public class HRegionServer implements HConstants, HRegionInterface,
                   try {
                     serverInfo.setStartCode(System.currentTimeMillis());
                     hlog = setupHLog();
+                    this.hlogFlusher.setHLog(hlog);
                   } catch (IOException e) {
                     this.abortRequested = true;
                     this.stopRequested.set(true);
-                    e = RemoteExceptionHandler.checkIOException(e);
+                    e = RemoteExceptionHandler.checkIOException(e); 
                     LOG.fatal("error restarting server", e);
                     break;
                   }
@@ -597,7 +593,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
           }
         }
         now = System.currentTimeMillis();
-        HMsg msg = this.outboundMsgs.poll((msgInterval - (now - lastMsg)),
+        HMsg msg = this.outboundMsgs.poll((msgInterval - (now - lastMsg)), 
           TimeUnit.MILLISECONDS);
         // If we got something, add it to list of things to send.
         if (msg != null) outboundMessages.add(msg);
@@ -628,13 +624,12 @@ public class HRegionServer implements HConstants, HRegionInterface,
     // Send interrupts to wake up threads if sleeping so they notice shutdown.
     // TODO: Should we check they are alive?  If OOME could have exited already
     cacheFlusher.interruptIfNecessary();
+    hlogFlusher.interrupt();
     compactSplitThread.interruptIfNecessary();
     hlogRoller.interruptIfNecessary();
     this.majorCompactionChecker.interrupt();
 
-    if (killed) {
-      // Just skip out w/o closing regions.
-    } else if (abortRequested) {
+    if (abortRequested) {
       if (this.fsOk) {
         // Only try to clean up if the file system is available
         try {
@@ -680,31 +675,20 @@ public class HRegionServer implements HConstants, HRegionInterface,
       LOG.info("stopping server at: " +
         serverInfo.getServerAddress().toString());
     }
-
-    // Make sure the proxy is down.
     if (this.hbaseMaster != null) {
       HBaseRPC.stopProxy(this.hbaseMaster);
       this.hbaseMaster = null;
     }
+    join();
 
-    if (!killed) {
-      join();
-      this.zooKeeperWrapper.close();
+    zooKeeperWrapper.close();
+
+    if (shutdownHDFS.get()) {
+      runThread(this.hdfsShutdownThread,
+          this.conf.getLong("hbase.dfs.shutdown.wait", 30000));
     }
-    runHDFSShutdownHook(this.shutdownHDFS.get(), this.hdfsShutdownThread,
-      this.conf.getLong("hbase.dfs.shutdown.wait", 30000));
-    LOG.info(Thread.currentThread().getName() + " exiting");
-  }
 
-  /**
-   * @param runit Run the passed thread?
-   * @param t Thread to run, if not null.
-   * @param waittime Time to wait on thread completion.
-   */
-  protected void runHDFSShutdownHook(final boolean runit, final Thread t,
-      final long waittime) {
-    if (!runit || t == null) return;
-    runThread(t, waittime);
+    LOG.info(Thread.currentThread().getName() + " exiting");
   }
 
   /*
@@ -749,20 +733,20 @@ public class HRegionServer implements HConstants, HRegionInterface,
    * @param dfsShutdownWait
    */
   public void runThread(final Thread t, final long dfsShutdownWait) {
-    if (t ==  null) return;
+    if (t ==  null) {
+      return;
+    }
     t.start();
     Threads.shutdown(t, dfsShutdownWait);
   }
 
   /**
    * Set the hdfs shutdown thread to run on exit.  Pass null to disable
-   * running of the shutdown test.
+   * running of the shutdown test.  Needed by tests.
    * @param t Thread to run.  Pass null to disable tests.
-   * @return Previous occupant of the shutdown thread.
+   * @return Previous occupant of the shutdown thread position.
    */
-  protected Thread setHDFSShutdownThreadOnExit(final Thread t) {
-    if (t == null) this.shutdownHDFS.set(false);
-    this.shutdownHDFS.set(true);
+  public Thread setHDFSShutdownThreadOnExit(final Thread t) {
     Thread old = this.hdfsShutdownThread;
     this.hdfsShutdownThread = t;
     return old;
@@ -785,13 +769,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       // Master may have sent us a new address with the other configs.
       // Update our address in this case. See HBASE-719
       String hra = conf.get("hbase.regionserver.address");
-      // TODO: The below used to be this.address != null.  Was broken by what
-      // looks like a mistake in:
-      //
-      // HBASE-1215 migration; metautils scan of meta region was broken; wouldn't see first row
-      // ------------------------------------------------------------------------
-      // r796326 | stack | 2009-07-21 07:40:34 -0700 (Tue, 21 Jul 2009) | 38 lines
-      if (hra != null) {
+      if (address != null) {
         HServerAddress hsa = new HServerAddress (hra,
           this.serverInfo.getServerAddress().getPort());
         LOG.info("Master passed us address to use. Was=" +
@@ -809,12 +787,12 @@ public class HRegionServer implements HConstants, HRegionInterface,
       // Register shutdown hook for HRegionServer, runs an orderly shutdown
       // when a kill signal is recieved
       Runtime.getRuntime().addShutdownHook(new ShutdownThread(this,
-        Thread.currentThread()));
-      // Suppress the hdfs shutdown hook and run it ourselves below.
+          Thread.currentThread()));
       this.hdfsShutdownThread = suppressHdfsShutdownHook();
 
       this.rootDir = new Path(this.conf.get(HConstants.HBASE_DIR));
       this.hlog = setupHLog();
+      this.hlogFlusher.setHLog(hlog);
       // Init in here rather than in constructor after thread name has been set
       this.metrics = new RegionServerMetrics();
       startServiceThreads();
@@ -843,16 +821,16 @@ public class HRegionServer implements HConstants, HRegionInterface,
       stores += r.stores.size();
       for (Store store: r.stores.values()) {
         storefiles += store.getStorefilesCount();
-        storefileSizeMB +=
+        storefileSizeMB += 
           (int)(store.getStorefilesSize()/1024/1024);
-        storefileIndexSizeMB +=
+        storefileIndexSizeMB += 
           (int)(store.getStorefilesIndexSize()/1024/1024);
       }
     }
     return new HServerLoad.RegionLoad(name, stores, storefiles,
       storefileSizeMB, memstoreSizeMB, storefileIndexSizeMB);
   }
-
+ 
   /**
    * @param regionName
    * @return An instance of RegionLoad.
@@ -927,12 +905,12 @@ public class HRegionServer implements HConstants, HRegionInterface,
     }
     return stop;
   }
-
-
+  
+  
   /**
    * Checks to see if the file system is still accessible.
    * If not, sets abortRequested and stopRequested
-   *
+   * 
    * @return false if file system is not available
    */
   protected boolean checkFileSystem() {
@@ -956,7 +934,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
   private static class ShutdownThread extends Thread {
     private final HRegionServer instance;
     private final Thread mainThread;
-
+    
     /**
      * @param instance
      * @param mainThread
@@ -969,7 +947,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
     @Override
     public void run() {
       LOG.info("Starting shutdown thread.");
-
+      
       // tell the region server to stop
       instance.stop();
 
@@ -977,7 +955,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       Threads.shutdown(mainThread);
 
       LOG.info("Shutdown thread complete");
-    }
+    }    
   }
 
   // We need to call HDFS shutdown when we are done shutting down
@@ -1014,27 +992,23 @@ public class HRegionServer implements HConstants, HRegionInterface,
       }
     }
   }
-
+  
   /**
-   * So, when you call {@ink FileSystem#get(Configuration)}, a new instance
-   * is created if none exists for this user currently and it is added to 
-   * a static Cache. In order to make sure things are cleaned up on the way out,
-   * it also adds a shutdown hook so that ALL filesystem instances in a JVM
-   * are closed when the process is terminated (The hook, if it runs,
-   * calls FileSystem.closeAll() which will call close on all FileSystems in the
-   * cache). This inconveniently runs concurrently with our own shutdown handler,
-   * and therefore causes all the filesystems to be closed before the server can
-   * do all its necessary cleanup.
+   * So, HDFS caches FileSystems so when you call FileSystem.get it's fast. In
+   * order to make sure things are cleaned up, it also creates a shutdown hook
+   * so that all filesystems can be closed when the process is terminated. This
+   * conveniently runs concurrently with our own shutdown handler, and
+   * therefore causes all the filesystems to be closed before the server can do
+   * all its necessary cleanup.
    *
-   * <p>The crazy dirty reflection in this method sneaks into the FileSystem cache
+   * The crazy dirty reflection in this method sneaks into the FileSystem cache
    * and grabs the shutdown hook, removes it from the list of active shutdown
    * hooks, and hangs onto it until later. Then, after we're properly done with
    * our graceful shutdown, we can execute the hdfs hook manually to make sure
    * loose ends are tied up.
    *
-   * <p>This seems quite fragile and susceptible to breaking if Hadoop changes
+   * This seems quite fragile and susceptible to breaking if Hadoop changes
    * anything about the way this cleanup is managed. Keep an eye on things.
-   * @return Thread The hook registered by FileSystem to run at shutdown time.
    */
   private Thread suppressHdfsShutdownHook() {
     try {
@@ -1046,7 +1020,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       }
       Runtime.getRuntime().removeShutdownHook(hdfsClientFinalizer);
       return hdfsClientFinalizer;
-
+      
     } catch (NoSuchFieldException nsfe) {
       LOG.fatal("Couldn't find field 'clientFinalizer' in FileSystem!", nsfe);
       throw new RuntimeException("Failed to suppress HDFS shutdown hook");
@@ -1057,7 +1031,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
   }
 
   /**
-   * Report the status of the server. A server is online once all the startup
+   * Report the status of the server. A server is online once all the startup 
    * is completed (setting up filesystem, starting service threads, etc.). This
    * method is designed mostly to be useful in tests.
    * @return true if online, false if not.
@@ -1065,10 +1039,10 @@ public class HRegionServer implements HConstants, HRegionInterface,
   public boolean isOnline() {
     return isOnline;
   }
-
+    
   private HLog setupHLog() throws RegionServerRunningException,
     IOException {
-
+    
     Path logdir = new Path(rootDir, HLog.getHLogDirectoryName(this.serverInfo));
     if (LOG.isDebugEnabled()) {
       LOG.debug("Log dir " + logdir);
@@ -1082,17 +1056,17 @@ public class HRegionServer implements HConstants, HRegionInterface,
     return newlog;
   }
 
-  // instantiate
+  // instantiate 
   protected HLog instantiateHLog(Path logdir) throws IOException {
     HLog newlog = new HLog(fs, logdir, conf, hlogRoller);
     return newlog;
   }
 
-
+  
   protected LogRoller getLogRoller() {
     return hlogRoller;
-  }
-
+  }  
+  
   /*
    * @param interval Interval since last time metrics were called.
    */
@@ -1121,7 +1095,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
         synchronized (r.stores) {
           stores += r.stores.size();
           for(Map.Entry<byte [], Store> ee: r.stores.entrySet()) {
-            Store store = ee.getValue();
+            Store store = ee.getValue(); 
             storefiles += store.getStorefilesCount();
             storefileIndexSize += store.getStorefilesIndexSize();
           }
@@ -1173,6 +1147,8 @@ public class HRegionServer implements HConstants, HRegionInterface,
     };
     Threads.setDaemonThreadRunning(this.hlogRoller, n + ".logRoller",
         handler);
+    Threads.setDaemonThreadRunning(this.hlogFlusher, n + ".logFlusher",
+        handler);
     Threads.setDaemonThreadRunning(this.cacheFlusher, n + ".cacheFlusher",
       handler);
     Threads.setDaemonThreadRunning(this.compactSplitThread, n + ".compactor",
@@ -1180,7 +1156,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
     Threads.setDaemonThreadRunning(this.workerThread, n + ".worker", handler);
     Threads.setDaemonThreadRunning(this.majorCompactionChecker,
         n + ".majorCompactionChecker", handler);
-
+    
     // Leases is not a Thread. Internally it runs a daemon thread.  If it gets
     // an unhandled exception, it will just exit.
     this.leases.setName(n + ".leaseChecker");
@@ -1210,7 +1186,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
           // update HRS server info
           this.serverInfo.setInfoPort(port);
         }
-      }
+      } 
     }
 
     // Start Server.  This service is like leases in that it internally runs
@@ -1282,7 +1258,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       notifyAll(); // Wakes run() if it is sleeping
     }
   }
-
+  
   /**
    * Cause the server to exit without closing the regions it is serving, the
    * log it is using and without notifying the master.
@@ -1296,17 +1272,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
     stop();
   }
 
-  /*
-   * Simulate a kill -9 of this server.
-   * Exits w/o closing regions or cleaninup logs but it does close socket in
-   * case want to bring up server on old hostname+port immediately.
-   */
-  protected void kill() {
-    this.killed = true;
-    abort();
-  }
-
-  /**
+  /** 
    * Wait on all threads to finish.
    * Presumption is that all closes and stops have already been called.
    */
@@ -1340,8 +1306,9 @@ public class HRegionServer implements HConstants, HRegionInterface,
         // Do initial RPC setup.  The final argument indicates that the RPC
         // should retry indefinitely.
         master = (HMasterRegionInterface)HBaseRPC.waitForProxy(
-          HMasterRegionInterface.class, HBaseRPCProtocolVersion.versionID,
-          masterAddress.getInetSocketAddress(), this.conf, -1, this.rpcTimeout);
+            HMasterRegionInterface.class, HBaseRPCProtocolVersion.versionID,
+            masterAddress.getInetSocketAddress(),
+            this.conf, -1, this.rpcTimeout);
       } catch (IOException e) {
         LOG.warn("Unable to connect to master. Retrying. Error was:", e);
         sleeper.sleep();
@@ -1374,7 +1341,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
         if (LOG.isDebugEnabled())
           LOG.debug("sending initial server load: " + hsl);
         lastMsg = System.currentTimeMillis();
-        boolean startCodeOk = false;
+        boolean startCodeOk = false; 
         while(!startCodeOk) {
           serverInfo.setStartCode(System.currentTimeMillis());
           startCodeOk = zooKeeperWrapper.writeRSLocation(this.serverInfo);
@@ -1413,13 +1380,13 @@ public class HRegionServer implements HConstants, HRegionInterface,
   private void reportClose(final HRegionInfo region, final byte[] message) {
     this.outboundMsgs.add(new HMsg(HMsg.Type.MSG_REPORT_CLOSE, region, message));
   }
-
+  
   /**
    * Add to the outbound message buffer
-   *
-   * When a region splits, we need to tell the master that there are two new
+   * 
+   * When a region splits, we need to tell the master that there are two new 
    * regions that need to be assigned.
-   *
+   * 
    * We do not need to inform the master about the old region, because we've
    * updated the meta or root regions, and the master will pick that up on its
    * next rescan of the root or meta tables.
@@ -1452,7 +1419,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
   final BlockingQueue<ToDoEntry> toDo = new LinkedBlockingQueue<ToDoEntry>();
   private Worker worker;
   private Thread workerThread;
-
+  
   /** Thread that performs long running requests from the master */
   class Worker implements Runnable {
     void stop() {
@@ -1460,7 +1427,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
         toDo.notifyAll();
       }
     }
-
+    
     public void run() {
       try {
         while(!stopRequested.get()) {
@@ -1522,20 +1489,12 @@ public class HRegionServer implements HConstants, HRegionInterface,
                 e.msg.isType(Type.MSG_REGION_MAJOR_COMPACT),
                 e.msg.getType().name());
               break;
-
+              
             case MSG_REGION_FLUSH:
               region = getRegion(info.getRegionName());
               region.flushcache();
               break;
-
-            case TESTING_MSG_BLOCK_RS:
-              while (!stopRequested.get()) {
-                Threads.sleep(1000);
-                LOG.info("Regionserver blocked by " +
-                  HMsg.Type.TESTING_MSG_BLOCK_RS + "; " + stopRequested.get());
-              }
-              break;
-
+              
             default:
               throw new AssertionError(
                   "Impossible state during msg processing.  Instruction: "
@@ -1574,7 +1533,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       }
     }
   }
-
+  
   void openRegion(final HRegionInfo regionInfo) {
     Integer mapKey = Bytes.mapKey(regionInfo.getRegionName());
     HRegion region = this.onlineRegions.get(mapKey);
@@ -1605,9 +1564,9 @@ public class HRegionServer implements HConstants, HRegionInterface,
         this.lock.writeLock().unlock();
       }
     }
-    reportOpen(regionInfo);
+    reportOpen(regionInfo); 
   }
-
+  
   protected HRegion instantiateRegion(final HRegionInfo regionInfo)
       throws IOException {
     HRegion r = HRegion.newHRegion(HTableDescriptor.getTableDir(rootDir, regionInfo
@@ -1618,9 +1577,9 @@ public class HRegionServer implements HConstants, HRegionInterface,
         addProcessingMessage(regionInfo);
       }
     });
-    return r;
+    return r; 
   }
-
+  
   /**
    * Add a MSG_REPORT_PROCESS_OPEN to the outbound queue.
    * This method is called while region is in the queue of regions to process
@@ -1674,7 +1633,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
     }
     return regionsToClose;
   }
-
+  
   /*
    * Thread to run close of a region.
    */
@@ -1685,7 +1644,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       super(Thread.currentThread().getName() + ".regionCloser." + r.toString());
       this.r = r;
     }
-
+    
     @Override
     public void run() {
       try {
@@ -1757,7 +1716,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
   }
 
 
-  public Result getClosestRowBefore(final byte [] regionName,
+  public Result getClosestRowBefore(final byte [] regionName, 
     final byte [] row, final byte [] family)
   throws IOException {
     checkOpen();
@@ -1765,8 +1724,8 @@ public class HRegionServer implements HConstants, HRegionInterface,
     try {
       // locate the region we're operating on
       HRegion region = getRegion(regionName);
-      // ask the region for all the data
-
+      // ask the region for all the data 
+      
       Result r = region.getClosestRowBefore(row, family);
       return r;
     } catch (Throwable t) {
@@ -1802,7 +1761,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
   throws IOException {
     if (put.getRow() == null)
       throw new IllegalArgumentException("update has null row");
-
+    
     checkOpen();
     this.requestCount.incrementAndGet();
     HRegion region = getRegion(regionName);
@@ -1823,35 +1782,30 @@ public class HRegionServer implements HConstants, HRegionInterface,
     checkOpen();
     try {
       HRegion region = getRegion(regionName);
-
       if (!region.getRegionInfo().isMetaTable()) {
         this.cacheFlusher.reclaimMemStoreMemory();
       }
+      Integer[] locks = new Integer[puts.length];
       for (i = 0; i < puts.length; i++) {
         this.requestCount.incrementAndGet();
-        Integer lock = getLockFromId(puts[i].getLockId());
-        region.put(puts[i], lock);
+        locks[i] = getLockFromId(puts[i].getLockId());
+        region.put(puts[i], locks[i]);
       }
     } catch (WrongRegionException ex) {
-      LOG.debug("Batch puts: " + i, ex);
-      return i;
-    } catch (NotServingRegionException ex) {
       LOG.debug("Batch puts interrupted at index=" + i + " because:" +
         ex.getMessage());
+      return i;
+    } catch (NotServingRegionException ex) {
       return i;
     } catch (Throwable t) {
       throw convertThrowableToIOE(cleanup(t));
     }
-
-    if (i == puts.length) {
-      return -1;
-    } else {
-      return i;
-    }
+    // All have been processed successfully.
+    return -1;
   }
 
   /**
-   *
+   * 
    * @param regionName
    * @param row
    * @param family
@@ -1862,12 +1816,12 @@ public class HRegionServer implements HConstants, HRegionInterface,
    * @return true if the new put was execute, false otherwise
    */
   public boolean checkAndPut(final byte[] regionName, final byte [] row,
-      final byte [] family, final byte [] qualifier, final byte [] value,
+      final byte [] family, final byte [] qualifier, final byte [] value, 
       final Put put) throws IOException{
     //Getting actual value
     Get get = new Get(row);
     get.addColumn(family, qualifier);
-
+    
     checkOpen();
     this.requestCount.incrementAndGet();
     HRegion region = getRegion(regionName);
@@ -1875,15 +1829,13 @@ public class HRegionServer implements HConstants, HRegionInterface,
       if (!region.getRegionInfo().isMetaTable()) {
         this.cacheFlusher.reclaimMemStoreMemory();
       }
-      boolean retval = region.checkAndPut(row, family, qualifier, value, put,
+      return region.checkAndPut(row, family, qualifier, value, put,
           getLockFromId(put.getLockId()), true);
-
-      return retval;
     } catch (Throwable t) {
       throw convertThrowableToIOE(cleanup(t));
     }
   }
-
+  
   //
   // remote scanner interface
   //
@@ -1908,7 +1860,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       throw convertThrowableToIOE(cleanup(t, "Failed openScanner"));
     }
   }
-
+  
   protected long addScanner(InternalScanner s) throws LeaseStillHeldException {
     long scannerId = -1L;
     scannerId = rand.nextLong();
@@ -1939,18 +1891,18 @@ public class HRegionServer implements HConstants, HRegionInterface,
       try {
         checkOpen();
       } catch (IOException e) {
-        // If checkOpen failed, server not running or filesystem gone,
+        // If checkOpen failed, server not running or filesystem gone, 
         // cancel this lease; filesystem is gone or we're closing or something.
         this.leases.cancelLease(scannerName);
         throw e;
       }
       this.leases.renewLease(scannerName);
-      List<Result> results = new ArrayList<Result>(nbRows);
+      List<Result> results = new ArrayList<Result>();
       long currentScanResultSize = 0;
-      List<KeyValue> values = new ArrayList<KeyValue>();
       for (int i = 0; i < nbRows && currentScanResultSize < maxScannerResultSize; i++) {
         requestCount.incrementAndGet();
         // Collect values to be returned here
+        List<KeyValue> values = new ArrayList<KeyValue>();
         boolean moreRows = s.next(values);
         if (!values.isEmpty()) {
           for (KeyValue kv : values) {
@@ -1961,7 +1913,6 @@ public class HRegionServer implements HConstants, HRegionInterface,
         if (!moreRows) {
           break;
         }
-        values.clear();
       }
       // Below is an ugly hack where we cast the InternalScanner to be a
       // HRegion.RegionScanner.  The alternative is to change InternalScanner
@@ -1978,7 +1929,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       }
       throw convertThrowableToIOE(cleanup(t));
     }
-  }
+  } 
 
   public void close(final long scannerId) throws IOException {
     try {
@@ -1998,17 +1949,17 @@ public class HRegionServer implements HConstants, HRegionInterface,
     }
   }
 
-  /**
+  /** 
    * Instantiated as a scanner lease.
    * If the lease times out, the scanner is closed
    */
   private class ScannerListener implements LeaseListener {
     private final String scannerName;
-
+    
     ScannerListener(final String n) {
       this.scannerName = n;
     }
-
+    
     public void leaseExpired() {
       LOG.info("Scanner " + this.scannerName + " lease expired");
       InternalScanner s = null;
@@ -2024,7 +1975,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       }
     }
   }
-
+  
   //
   // Methods that do the actual work for the remote API
   //
@@ -2070,7 +2021,6 @@ public class HRegionServer implements HConstants, HRegionInterface,
     } catch (Throwable t) {
       throw convertThrowableToIOE(cleanup(t));
     }
-
     // All have been processed successfully.
     return -1;
   }
@@ -2203,7 +2153,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
   public InfoServer getInfoServer() {
     return infoServer;
   }
-
+  
   /**
    * @return true if a stop has been requested.
    */
@@ -2219,7 +2169,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
   }
 
   /**
-   *
+   * 
    * @return the configuration
    */
   public HBaseConfiguration getConfiguration() {
@@ -2241,7 +2191,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
   public HRegion [] getOnlineRegionsAsArray() {
     return getOnlineRegions().toArray(new HRegion[0]);
   }
-
+  
   /**
    * @return The HRegionInfos from online regions sorted
    */
@@ -2254,10 +2204,10 @@ public class HRegionServer implements HConstants, HRegionInterface,
     }
     return result;
   }
-
+  
   /**
-   * This method removes HRegion corresponding to hri from the Map of onlineRegions.
-   *
+   * This method removes HRegion corresponding to hri from the Map of onlineRegions.  
+   * 
    * @param hri the HRegionInfo corresponding to the HRegion to-be-removed.
    * @return the removed HRegion, or null if the HRegion was not in onlineRegions.
    */
@@ -2292,7 +2242,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
     }
     return sortedRegions;
   }
-
+  
   /**
    * @param regionName
    * @return HRegion for the passed <code>regionName</code> or null if named
@@ -2311,8 +2261,8 @@ public class HRegionServer implements HConstants, HRegionInterface,
   public FlushRequester getFlushRequester() {
     return this.cacheFlusher;
   }
-
-  /**
+  
+  /** 
    * Protected utility method for safely obtaining an HRegion handle.
    * @param regionName Name of online {@link HRegion} to return
    * @return {@link HRegion} for <code>regionName</code>
@@ -2355,10 +2305,10 @@ public class HRegionServer implements HConstants, HRegionInterface,
     }
     return regions.toArray(new HRegionInfo[regions.size()]);
   }
-
-  /**
+  
+  /**  
    * Called to verify that this server is up and running.
-   *
+   * 
    * @throws IOException
    */
   protected void checkOpen() throws IOException {
@@ -2370,14 +2320,14 @@ public class HRegionServer implements HConstants, HRegionInterface,
       throw new IOException("File system not available");
     }
   }
-
+ 
   /**
    * @return Returns list of non-closed regions hosted on this server.  If no
    * regions to check, returns an empty list.
    */
   protected Set<HRegion> getRegionsToCheck() {
     HashSet<HRegion> regionsToCheck = new HashSet<HRegion>();
-    //TODO: is this locking necessary?
+    //TODO: is this locking necessary? 
     lock.readLock().lock();
     try {
       regionsToCheck.addAll(this.onlineRegions.values());
@@ -2394,15 +2344,15 @@ public class HRegionServer implements HConstants, HRegionInterface,
     return regionsToCheck;
   }
 
-  public long getProtocolVersion(final String protocol,
+  public long getProtocolVersion(final String protocol, 
       final long clientVersion)
-  throws IOException {
+  throws IOException {  
     if (protocol.equals(HRegionInterface.class.getName())) {
       return HBaseRPCProtocolVersion.versionID;
     }
     throw new IOException("Unknown protocol to name node: " + protocol);
   }
-
+  
   /**
    * @return Queue to which you can add outbound messages.
    */
@@ -2445,98 +2395,14 @@ public class HRegionServer implements HConstants, HRegionInterface,
     return fs;
   }
 
-  /**
-   * @return Info on port this server has bound to, etc.
-   */
-  public HServerInfo getServerInfo() { return this.serverInfo; }
-
-  /** {@inheritDoc} */
-  public long incrementColumnValue(byte [] regionName, byte [] row,
-      byte [] family, byte [] qualifier, long amount, boolean writeToWAL)
-  throws IOException {
-    checkOpen();
-
-    if (regionName == null) {
-      throw new IOException("Invalid arguments to incrementColumnValue " +
-      "regionName is null");
-    }
-    requestCount.incrementAndGet();
-    try {
-      HRegion region = getRegion(regionName);
-      long retval = region.incrementColumnValue(row, family, qualifier, amount,
-          writeToWAL);
-
-      return retval;
-    } catch (IOException e) {
-      checkFileSystem();
-      throw e;
-    }
-  }
-
-  /** {@inheritDoc} */
-  public HRegionInfo[] getRegionsAssignment() throws IOException {
-    HRegionInfo[] regions = new HRegionInfo[onlineRegions.size()];
-    Iterator<HRegion> ite = onlineRegions.values().iterator();
-    for(int i = 0; ite.hasNext(); i++) {
-      regions[i] = ite.next().getRegionInfo();
-    }
-    return regions;
-  }
-
-  /** {@inheritDoc} */
-  public HServerInfo getHServerInfo() throws IOException {
-    return serverInfo;
-  }
-
-  @Override
-  public MultiPutResponse multiPut(MultiPut puts) throws IOException {
-    MultiPutResponse resp = new MultiPutResponse();
-
-    // do each region as it's own.
-    for( Map.Entry<byte[],List<Put>> e: puts.puts.entrySet()) {
-      int result = put(e.getKey(), e.getValue().toArray(new Put[]{}));
-      resp.addResult(e.getKey(), result);
-
-      e.getValue().clear(); // clear some RAM
-    }
-
-    return resp;
-  }
-
-  public String toString() {
-    return this.serverInfo.toString();
-  }
-
   //
   // Main program and support routines
   //
 
-  /**
-   * @param hrs
-   * @return Thread the RegionServer is running in correctly named.
-   */
-  public static Thread startRegionServer(final HRegionServer hrs) {
-    return startRegionServer(hrs,
-      "regionserver" + hrs.getServerInfo().getServerAddress().getPort());
-  }
-
-  /**
-   * @param hrs
-   * @param name
-   * @return Thread the RegionServer is running in correctly named.
-   */
-  public static Thread startRegionServer(final HRegionServer hrs,
-      final String name) {
-    Thread t = new Thread(hrs);
-    t.setName(name);
-    t.start();
-    return t;
-  }
-
   private static void printUsageAndExit() {
     printUsageAndExit(null);
   }
-
+  
   private static void printUsageAndExit(final String message) {
     if (message != null) {
       System.err.println(message);
@@ -2544,25 +2410,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
     System.err.println("Usage: java org.apache.hbase.HRegionServer start|stop");
     System.exit(0);
   }
-
-  /**
-   * Utility for constructing an instance of the passed HRegionServer class.
-   * @param regionServerClass
-   * @param conf2
-   * @return HRegionServer instance.
-   */
-  public static HRegionServer constructRegionServer(Class<? extends HRegionServer> regionServerClass,
-      final Configuration conf2)  {
-    try {
-      Constructor<? extends HRegionServer> c =
-        regionServerClass.getConstructor(HBaseConfiguration.class);
-      return c.newInstance(conf2);
-    } catch (Exception e) {
-      throw new RuntimeException("Failed construction of " +
-        "Master: " + regionServerClass.toString(), e);
-    }
-  }
-
+  
   /**
    * Do class main.
    * @param args
@@ -2574,7 +2422,7 @@ public class HRegionServer implements HConstants, HRegionInterface,
       printUsageAndExit();
     }
     Configuration conf = new HBaseConfiguration();
-
+    
     // Process command-line args. TODO: Better cmd-line processing
     // (but hopefully something not as painful as cli options).
     for (String cmd: args) {
@@ -2590,8 +2438,12 @@ public class HRegionServer implements HConstants, HRegionInterface,
             if (runtime != null) {
               LOG.info("vmInputArguments=" + runtime.getInputArguments());
             }
-            HRegionServer hrs = constructRegionServer(regionServerClass, conf);
-            startRegionServer(hrs);
+            Constructor<? extends HRegionServer> c =
+              regionServerClass.getConstructor(HBaseConfiguration.class);
+            HRegionServer hrs = c.newInstance(conf);
+            Thread t = new Thread(hrs);
+            t.setName("regionserver" + hrs.server.getListenerAddress());
+            t.start();
           }
         } catch (Throwable t) {
           LOG.error( "Can not start region server because "+
@@ -2599,16 +2451,52 @@ public class HRegionServer implements HConstants, HRegionInterface,
         }
         break;
       }
-
+      
       if (cmd.equals("stop")) {
         printUsageAndExit("To shutdown the regionserver run " +
           "bin/hbase-daemon.sh stop regionserver or send a kill signal to" +
           "the regionserver pid");
       }
-
+      
       // Print out usage if we get to here.
       printUsageAndExit();
     }
+  }
+  
+  /** {@inheritDoc} */
+  public long incrementColumnValue(byte [] regionName, byte [] row, 
+      byte [] family, byte [] qualifier, long amount, boolean writeToWAL)
+  throws IOException {
+    checkOpen();
+
+    if (regionName == null) {
+      throw new IOException("Invalid arguments to incrementColumnValue " + 
+      "regionName is null");
+    }
+    requestCount.incrementAndGet();
+    try {
+      HRegion region = getRegion(regionName);
+      return region.incrementColumnValue(row, family, qualifier, amount, 
+          writeToWAL);
+    } catch (IOException e) {
+      checkFileSystem();
+      throw e;
+    }
+  }
+  
+  /** {@inheritDoc} */
+  public HRegionInfo[] getRegionsAssignment() throws IOException {
+    HRegionInfo[] regions = new HRegionInfo[onlineRegions.size()];
+    Iterator<HRegion> ite = onlineRegions.values().iterator();
+    for(int i = 0; ite.hasNext(); i++) {
+      regions[i] = ite.next().getRegionInfo();
+    }
+    return regions;
+  }
+  
+  /** {@inheritDoc} */
+  public HServerInfo getHServerInfo() throws IOException {
+    return serverInfo;
   }
 
   /**

@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
@@ -59,7 +60,17 @@ public class ClusterStatus extends VersionedWritable {
    * Constructor, for Writable
    */
   public ClusterStatus() {
-    super();
+  }
+
+  /**
+   * @return the names of region servers in the cluster
+   */
+  public Collection<String> getServerNames() {
+    ArrayList<String> names = new ArrayList<String>(liveServerInfo.size());
+    for (HServerInfo server: liveServerInfo) {
+      names.add(server.getName());
+    }
+    return names;
   }
 
   /**
@@ -166,7 +177,7 @@ public class ClusterStatus extends VersionedWritable {
   /**
    * Returns detailed region server information: A list of
    * {@link HServerInfo}, containing server load and resource usage
-   * statistics as {@link HServerLoad}, containing per-region
+   * statistics as {@link HServerLoad}, containing per-region 
    * statistics as {@link HServerLoad.RegionLoad}.
    * @return region server information
    */

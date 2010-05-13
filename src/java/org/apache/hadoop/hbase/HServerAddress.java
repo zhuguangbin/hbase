@@ -27,12 +27,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 
 /**
- * HServerAddress is a "label" for a HBase server made of host and port number.
+ * HServerAddress is a "label" for a HBase server that combines the host
+ * name and port number.
  */
 public class HServerAddress implements WritableComparable<HServerAddress> {
   private InetSocketAddress address;
   String stringValue;
 
+  /** Empty constructor, used for Writable */
   public HServerAddress() {
     this.address = null;
     this.stringValue = null;
@@ -47,9 +49,11 @@ public class HServerAddress implements WritableComparable<HServerAddress> {
     this.stringValue = address.getAddress().getHostAddress() + ":" +
       address.getPort();
   }
-
+  
   /**
-   * @param hostAndPort Hostname and port formatted as <code>&lt;hostname> ':' &lt;port></code>
+   * Construct a HServerAddress from a string of the form hostname:port
+   * 
+   * @param hostAndPort format 'hostname:port'
    */
   public HServerAddress(String hostAndPort) {
     int colonIndex = hostAndPort.lastIndexOf(':');
@@ -62,56 +66,60 @@ public class HServerAddress implements WritableComparable<HServerAddress> {
     this.address = new InetSocketAddress(host, port);
     this.stringValue = hostAndPort;
   }
-
+  
   /**
-   * @param bindAddress Hostname
-   * @param port Port number
+   * Construct a HServerAddress from hostname, port number
+   * @param bindAddress host name
+   * @param port port number
    */
   public HServerAddress(String bindAddress, int port) {
     this.address = new InetSocketAddress(bindAddress, port);
     this.stringValue = bindAddress + ":" + port;
   }
-
+  
   /**
-   * Copy-constructor
-   *
-   * @param other HServerAddress to copy from
+   * Construct a HServerAddress from another HServerAddress
+   * 
+   * @param other the HServerAddress to copy from
    */
   public HServerAddress(HServerAddress other) {
     String bindAddress = other.getBindAddress();
     int port = other.getPort();
-    this.address = new InetSocketAddress(bindAddress, port);
+    address = new InetSocketAddress(bindAddress, port);
     stringValue = bindAddress + ":" + port;
   }
 
-  /** @return Bind address */
+  /** @return bind address */
   public String getBindAddress() {
-    return this.address.getAddress().getHostAddress();
+    return address.getAddress().getHostAddress();
   }
 
-  /** @return Port number */
+  /** @return port number */
   public int getPort() {
-    return this.address.getPort();
+    return address.getPort();
   }
-
-  /** @return Hostname */
+  
+  /** @return host name */
   public String getHostname() {
-    return this.address.getHostName();
+    return address.getHostName();
   }
 
-  /** @return The InetSocketAddress */
+  /** @return the InetSocketAddress */
   public InetSocketAddress getInetSocketAddress() {
-    return this.address;
+    return address;
   }
 
   /**
-   * @return String formatted as <code>&lt;bind address> ':' &lt;port></code>
+   * @see java.lang.Object#toString()
    */
   @Override
   public String toString() {
-    return (this.stringValue == null ? "" : this.stringValue);
+    return (stringValue == null ? "" : stringValue);
   }
 
+  /**
+   * @see java.lang.Object#equals(java.lang.Object)
+   */
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -126,13 +134,16 @@ public class HServerAddress implements WritableComparable<HServerAddress> {
     return this.compareTo((HServerAddress)o) == 0;
   }
 
+  /**
+   * @see java.lang.Object#hashCode()
+   */
   @Override
   public int hashCode() {
     int result = this.address.hashCode();
     result ^= this.stringValue.hashCode();
     return result;
   }
-
+  
   //
   // Writable
   //
@@ -140,11 +151,11 @@ public class HServerAddress implements WritableComparable<HServerAddress> {
   public void readFields(DataInput in) throws IOException {
     String bindAddress = in.readUTF();
     int port = in.readInt();
-
+    
     if(bindAddress == null || bindAddress.length() == 0) {
       address = null;
       stringValue = null;
-
+      
     } else {
       address = new InetSocketAddress(bindAddress, port);
       stringValue = bindAddress + ":" + port;
@@ -155,17 +166,17 @@ public class HServerAddress implements WritableComparable<HServerAddress> {
     if (address == null) {
       out.writeUTF("");
       out.writeInt(0);
-
+      
     } else {
       out.writeUTF(address.getAddress().getHostAddress());
       out.writeInt(address.getPort());
     }
   }
-
+  
   //
   // Comparable
   //
-
+  
   public int compareTo(HServerAddress o) {
     // Addresses as Strings may not compare though address is for the one
     // server with only difference being that one address has hostname

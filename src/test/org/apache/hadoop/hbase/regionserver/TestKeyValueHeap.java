@@ -40,7 +40,7 @@ public class TestKeyValueHeap extends HBaseTestCase
 implements HConstants {
   private final boolean PRINT = false;
   
-  List<KeyValueScanner> scanners = new ArrayList<KeyValueScanner>();
+  List<Scanner> scanners = new ArrayList<Scanner>();
 
   private byte [] row1;
   private byte [] fam1;
@@ -109,7 +109,7 @@ implements HConstants {
 
     //Creating KeyValueHeap
     KeyValueHeap kvh =
-      new KeyValueHeap(scanners, KeyValue.COMPARATOR);
+      new KeyValueHeap(scanners.toArray(new Scanner[0]), KeyValue.COMPARATOR);
     
     List<KeyValue> actual = new ArrayList<KeyValue>();
     while(kvh.peek() != null){
@@ -162,7 +162,7 @@ implements HConstants {
     
     //Creating KeyValueHeap
     KeyValueHeap kvh =
-      new KeyValueHeap(scanners, KeyValue.COMPARATOR);
+      new KeyValueHeap(scanners.toArray(new Scanner[0]), KeyValue.COMPARATOR);
     
     KeyValue seekKv = new KeyValue(row2, fam1, null, null);
     kvh.seek(seekKv);
@@ -208,12 +208,12 @@ implements HConstants {
 
     //Creating KeyValueHeap
     KeyValueHeap kvh =
-      new KeyValueHeap(scanners, KeyValue.COMPARATOR);
+      new KeyValueHeap(scanners.toArray(new Scanner[0]), KeyValue.COMPARATOR);
     
     while(kvh.next() != null);
     
-    for(KeyValueScanner scanner : scanners) {
-      assertTrue(((Scanner)scanner).isClosed());
+    for(Scanner scanner : scanners) {
+      assertTrue(scanner.isClosed());
     }
   }
 

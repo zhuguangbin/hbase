@@ -27,10 +27,10 @@ import org.apache.hadoop.hbase.KeyValue;
 
 /**
  * Internal scanners differ from client-side scanners in that they operate on
- * HStoreKeys and byte[] instead of RowResults. This is because they are
+ * HStoreKeys and byte[] instead of RowResults. This is because they are 
  * actually close to how the data is physically stored, and therefore it is more
- * convenient to interact with them that way. It is also much easier to merge
- * the results across SortedMaps than RowResults.
+ * convenient to interact with them that way. It is also much easier to merge 
+ * the results across SortedMaps than RowResults. 
  *
  * <p>Additionally, we need to be able to determine if the scanner is doing
  * wildcard column matches (when only a column family is specified or if a
@@ -46,18 +46,9 @@ public interface InternalScanner extends Closeable {
    * @return true if more rows exist after this one, false if scanner is done
    * @throws IOException
    */
-  public boolean next(List<KeyValue> results) throws IOException;
-
-  /**
-   * Grab the next row's worth of values with a limit on the number of values
-   * to return.
-   * @param result
-   * @param limit
-   * @return true if more rows exist after this one, false if scanner is done
-   * @throws IOException
-   */
-  public boolean next(List<KeyValue> result, int limit) throws IOException;
-
+  public boolean next(List<KeyValue> results)
+  throws IOException;
+  
   /**
    * Closes the scanner and releases any resources it has allocated
    * @throws IOException

@@ -45,8 +45,8 @@ import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.util.StringUtils;
 
 /**
- * A base for {@link TableInputFormat}s. Receives a {@link HTable}, an
- * {@link Scan} instance that defines the input columns etc. Subclasses may use
+ * A base for {@link TableInputFormat}s. Receives a {@link HTable}, an 
+ * {@link Scan} instance that defines the input columns etc. Subclasses may use 
  * other TableRecordReader implementations.
  * <p>
  * An example of a subclass:
@@ -74,7 +74,7 @@ import org.apache.hadoop.util.StringUtils;
  */
 public abstract class TableInputFormatBase
 extends InputFormat<ImmutableBytesWritable, Result> {
-
+  
   final Log LOG = LogFactory.getLog(TableInputFormatBase.class);
 
   /** Holds the details for the internal scanner. */
@@ -85,12 +85,12 @@ extends InputFormat<ImmutableBytesWritable, Result> {
   private TableRecordReader tableRecordReader = null;
 
   /**
-   * Iterate over an HBase table data, return (ImmutableBytesWritable, Result)
+   * Iterate over an HBase table data, return (ImmutableBytesWritable, Result) 
    * pairs.
    */
   protected class TableRecordReader
   extends RecordReader<ImmutableBytesWritable, Result> {
-
+    
     private ResultScanner scanner = null;
     private Scan scan = null;
     private HTable htable = null;
@@ -113,7 +113,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
     /**
      * Build the scanner. Not done in constructor to allow for extension.
      *
-     * @throws IOException When restarting the scan fails.
+     * @throws IOException When restarting the scan fails. 
      */
     public void init() throws IOException {
       restart(scan.getStartRow());
@@ -121,7 +121,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
     /**
      * Sets the HBase table.
-     *
+     * 
      * @param htable  The {@link HTable} to scan.
      */
     public void setHTable(HTable htable) {
@@ -130,7 +130,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
     /**
      * Sets the scan defining the actual details like columns etc.
-     *
+     *  
      * @param scan  The scan to set.
      */
     public void setScan(Scan scan) {
@@ -139,7 +139,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
     /**
      * Closes the split.
-     *
+     * 
      * @see org.apache.hadoop.mapreduce.RecordReader#close()
      */
     @Override
@@ -149,7 +149,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
     /**
      * Returns the current key.
-     *
+     *  
      * @return The current key.
      * @throws IOException
      * @throws InterruptedException When the job is aborted.
@@ -163,7 +163,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
     /**
      * Returns the current value.
-     *
+     * 
      * @return The current value.
      * @throws IOException When the value is faulty.
      * @throws InterruptedException When the job is aborted.
@@ -176,13 +176,13 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
     /**
      * Initializes the reader.
-     *
+     * 
      * @param inputsplit  The split to work with.
      * @param context  The current task context.
      * @throws IOException When setting up the reader fails.
      * @throws InterruptedException When the job is aborted.
      * @see org.apache.hadoop.mapreduce.RecordReader#initialize(
-     *   org.apache.hadoop.mapreduce.InputSplit,
+     *   org.apache.hadoop.mapreduce.InputSplit, 
      *   org.apache.hadoop.mapreduce.TaskAttemptContext)
      */
     @Override
@@ -193,7 +193,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
     /**
      * Positions the record reader to the next record.
-     *
+     *  
      * @return <code>true</code> if there was another record.
      * @throws IOException When reading the record failed.
      * @throws InterruptedException When the job was aborted.
@@ -206,7 +206,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
       try {
         value = this.scanner.next();
       } catch (IOException e) {
-        LOG.debug("recovered from " + StringUtils.stringifyException(e));
+        LOG.debug("recovered from " + StringUtils.stringifyException(e));  
         restart(lastRow);
         scanner.next();    // skip presumed already mapped row
         value = scanner.next();
@@ -221,7 +221,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
     /**
      * The current progress of the record reader through its data.
-     *
+     * 
      * @return A number between 0.0 and 1.0, the fraction of the data read.
      * @see org.apache.hadoop.mapreduce.RecordReader#getProgress()
      */
@@ -235,13 +235,13 @@ extends InputFormat<ImmutableBytesWritable, Result> {
   /**
    * Builds a TableRecordReader. If no TableRecordReader was provided, uses
    * the default.
-   *
+   * 
    * @param split  The split to work with.
    * @param context  The current context.
    * @return The newly created record reader.
    * @throws IOException When creating the reader fails.
    * @see org.apache.hadoop.mapreduce.InputFormat#createRecordReader(
-   *   org.apache.hadoop.mapreduce.InputSplit,
+   *   org.apache.hadoop.mapreduce.InputSplit, 
    *   org.apache.hadoop.mapreduce.TaskAttemptContext)
    */
   @Override
@@ -276,7 +276,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
   @Override
   public List<InputSplit> getSplits(JobContext context) throws IOException {
     Pair<byte[][], byte[][]> keys = table.getStartEndKeys();
-    if (keys == null || keys.getFirst() == null ||
+    if (keys == null || keys.getFirst() == null || 
         keys.getFirst().length == 0) {
       throw new IOException("Expecting at least one region.");
     }
@@ -284,11 +284,8 @@ extends InputFormat<ImmutableBytesWritable, Result> {
       throw new IOException("No table was provided.");
     }
     int count = 0;
-    List<InputSplit> splits = new ArrayList<InputSplit>(keys.getFirst().length);
+    List<InputSplit> splits = new ArrayList<InputSplit>(keys.getFirst().length); 
     for (int i = 0; i < keys.getFirst().length; i++) {
-      if ( !includeRegionInSplit(keys.getFirst()[i], keys.getSecond()[i])) {
-        continue;
-      }
       String regionLocation = table.getRegionLocation(keys.getFirst()[i]).
         getServerAddress().getHostname();
       byte[] startRow = scan.getStartRow();
@@ -296,52 +293,24 @@ extends InputFormat<ImmutableBytesWritable, Result> {
       // determine if the given start an stop key fall into the region
       if ((startRow.length == 0 || keys.getSecond()[i].length == 0 ||
            Bytes.compareTo(startRow, keys.getSecond()[i]) < 0) &&
-          (stopRow.length == 0 ||
+          (stopRow.length == 0 || 
            Bytes.compareTo(stopRow, keys.getFirst()[i]) > 0)) {
-        byte[] splitStart = startRow.length == 0 ||
-          Bytes.compareTo(keys.getFirst()[i], startRow) >= 0 ?
+        byte[] splitStart = startRow.length == 0 || 
+          Bytes.compareTo(keys.getFirst()[i], startRow) >= 0 ? 
             keys.getFirst()[i] : startRow;
-        byte[] splitStop = (stopRow.length == 0 ||
+        byte[] splitStop = (stopRow.length == 0 || 
           Bytes.compareTo(keys.getSecond()[i], stopRow) <= 0) &&
-          keys.getSecond()[i].length > 0 ?
+          keys.getSecond()[i].length > 0 ? 
             keys.getSecond()[i] : stopRow;
         InputSplit split = new TableSplit(table.getTableName(),
           splitStart, splitStop, regionLocation);
         splits.add(split);
-        if (LOG.isDebugEnabled())
+        if (LOG.isDebugEnabled()) 
           LOG.debug("getSplits: split -> " + (count++) + " -> " + split);
       }
     }
     return splits;
   }
-
-  /**
-   *
-   *
-   * Test if the given region is to be included in the InputSplit while splitting
-   * the regions of a table.
-   * <p>
-   * This optimization is effective when there is a specific reasoning to exclude an entire region from the M-R job,
-   * (and hence, not contributing to the InputSplit), given the start and end keys of the same. <br>
-   * Useful when we need to remember the last-processed top record and revisit the [last, current) interval for M-R processing,
-   * continuously. In addition to reducing InputSplits, reduces the load on the region server as well, due to the ordering of the keys.
-   * <br>
-   * <br>
-   * Note: It is possible that <code>endKey.length() == 0 </code> , for the last (recent) region.
-   * <br>
-   * Override this method, if you want to bulk exclude regions altogether from M-R. By default, no region is excluded( i.e. all regions are included).
-   *
-   *
-   * @param startKey Start key of the region
-   * @param endKey End key of the region
-   * @return true, if this region needs to be included as part of the input (default).
-   *
-   */
-  protected boolean includeRegionInSplit(final byte[] startKey, final byte [] endKey) {
-    return true;
-  }
-
-
 
   /**
    * Allows subclasses to get the {@link HTable}.
@@ -361,7 +330,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
   /**
    * Gets the scan defining the actual details like columns etc.
-   *
+   *  
    * @return The internal scan instance.
    */
   public Scan getScan() {
@@ -371,7 +340,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
 
   /**
    * Sets the scan defining the actual details like columns etc.
-   *
+   *  
    * @param scan  The scan to set.
    */
   public void setScan(Scan scan) {
@@ -381,7 +350,7 @@ extends InputFormat<ImmutableBytesWritable, Result> {
   /**
    * Allows subclasses to set the {@link TableRecordReader}.
    *
-   * @param tableRecordReader A different {@link TableRecordReader}
+   * @param tableRecordReader A different {@link TableRecordReader} 
    *   implementation.
    */
   protected void setTableRecordReader(TableRecordReader tableRecordReader) {

@@ -21,64 +21,34 @@
 package org.apache.hadoop.hbase.regionserver;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.io.hfile.HFileScanner;
-import org.apache.hadoop.hbase.io.hfile.HFile.Reader;
 
 /**
  * A KeyValue scanner that iterates over a single HFile
  */
 class StoreFileScanner implements KeyValueScanner {
-  static final Log LOG = LogFactory.getLog(Store.class);
-
+  
   private HFileScanner hfs;
   private KeyValue cur = null;
-
+  
   /**
    * Implements a {@link KeyValueScanner} on top of the specified {@link HFileScanner}
    * @param hfs HFile scanner
    */
-  private StoreFileScanner(HFileScanner hfs) {
+  public StoreFileScanner(HFileScanner hfs) {
     this.hfs = hfs;
   }
 
-  /**
-   * Return an array of scanners corresponding to the given
-   * set of store files.
-   */
-  public static List<KeyValueScanner> getScannersForStoreFiles(
-      Collection<StoreFile> filesToCompact,
-      boolean cacheBlocks,
-      boolean usePread) {
-    List<KeyValueScanner> scanners =
-      new ArrayList<KeyValueScanner>(filesToCompact.size());
-    for (StoreFile file : filesToCompact) {
-      Reader r = file.getReader();
-      if (r == null) {
-        // TODO why can this happen? this seems like something worth
-        // throwing an exception over!
-        LOG.error("StoreFile " + file + " has a null Reader");
-        continue;
-      }
-      scanners.add(new StoreFileScanner(r.getScanner(cacheBlocks, usePread)));
-    }
-    return scanners;
-  }
-  
   public String toString() {
     return "StoreFileScanner[" + hfs.toString() + ", cur=" + cur + "]";
   }
-
+  
   public KeyValue peek() {
     return cur;
   }
-
+  
   public KeyValue next() {
     KeyValue retKey = cur;
     cur = hfs.getKeyValue();
@@ -92,7 +62,7 @@ class StoreFileScanner implements KeyValueScanner {
     }
     return retKey;
   }
-
+  
   public boolean seek(KeyValue key) {
     try {
       if(!seekAtOrAfter(hfs, key)) {
@@ -107,14 +77,14 @@ class StoreFileScanner implements KeyValueScanner {
       return false;
     }
   }
-
+  
   public void close() {
     // Nothing to close on HFileScanner?
     cur = null;
   }
-
+  
   /**
-   *
+   * 
    * @param s
    * @param k
    * @return

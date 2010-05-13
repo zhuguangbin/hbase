@@ -25,7 +25,6 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.rmi.UnexpectedException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableSet;
@@ -80,7 +79,6 @@ public class MemStore implements HeapSize {
 
   // Used to track own heapSize
   final AtomicLong size;
-
   /**
    * Default constructor. Used for tests.
    */
@@ -190,7 +188,7 @@ public class MemStore implements HeapSize {
     return s;
   }
 
-  /**
+  /** 
    * Write a delete
    * @param delete
    * @return approximate size of the passed key and value.
@@ -207,7 +205,7 @@ public class MemStore implements HeapSize {
     this.size.addAndGet(s);
     return s;
   }
-
+  
   /**
    * @param kv Find the row that comes after this one.  If null, we return the
    * first.
@@ -380,11 +378,12 @@ public class MemStore implements HeapSize {
   /**
    * @return scanner on memstore and snapshot in this order.
    */
-  List<KeyValueScanner> getScanners() {
+  KeyValueScanner [] getScanners() {
     this.lock.readLock().lock();
     try {
-      return Collections.<KeyValueScanner>singletonList(
-          new MemStoreScanner());
+      KeyValueScanner [] scanners = new KeyValueScanner[1];
+      scanners[0] = new MemStoreScanner();
+      return scanners;
     } finally {
       this.lock.readLock().unlock();
     }
@@ -455,7 +454,7 @@ public class MemStore implements HeapSize {
   void readLockUnlock() {
     this.lock.readLock().unlock();
   }
-
+  
   /**
    *
    * @param set memstore or snapshot
@@ -486,7 +485,7 @@ public class MemStore implements HeapSize {
     }
     return false;
   }
-
+  
 
   /*
    * MemStoreScanner implements the KeyValueScanner.
@@ -521,6 +520,7 @@ public class MemStore implements HeapSize {
 
     */
 
+
     MemStoreScanner() {
       super();
 
@@ -535,7 +535,6 @@ public class MemStore implements HeapSize {
       while (ret == null && it.hasNext()) {
         KeyValue v = it.next();
         if (v.getMemstoreTS() <= readPoint) {
-          // keep it.
           ret = v;
         }
       }
@@ -558,14 +557,12 @@ public class MemStore implements HeapSize {
 
       kvsetNextRow = getNext(kvsetIt);
       snapshotNextRow = getNext(snapshotIt);
+      long readPoint = ReadWriteConsistencyControl.getThreadReadPoint();
 
-
-      //long readPoint = ReadWriteConsistencyControl.getThreadReadPoint();
       //DebugPrint.println( " MS@" + hashCode() + " kvset seek: " + kvsetNextRow + " with size = " +
       //    kvset.size() + " threadread = " + readPoint);
       //DebugPrint.println( " MS@" + hashCode() + " snapshot seek: " + snapshotNextRow + " with size = " +
       //    snapshot.size() + " threadread = " + readPoint);
-
 
       KeyValue lowest = getLowest();
 
@@ -592,10 +589,10 @@ public class MemStore implements HeapSize {
       } else {
         snapshotNextRow = getNext(snapshotIt);
       }
-
       //long readpoint = ReadWriteConsistencyControl.getThreadReadPoint();
       //DebugPrint.println(" MS@" + hashCode() + " next: " + theNext + " next_next: " +
       //    getLowest() + " threadpoint=" + readpoint);
+
       return theNext;
     }
 
@@ -621,17 +618,18 @@ public class MemStore implements HeapSize {
     }
 
     public synchronized void close() {
-      this.kvsetNextRow = null;
-      this.snapshotNextRow = null;
-
+      // Accelerate the GC a bit perhaps?
       this.kvsetIt = null;
       this.snapshotIt = null;
+
+      this.kvsetNextRow = null;
+      this.snapshotNextRow = null;
     }
   }
 
   public final static long FIXED_OVERHEAD = ClassSize.align(
       ClassSize.OBJECT + (7 * ClassSize.REFERENCE));
-
+  
   public final static long DEEP_OVERHEAD = ClassSize.align(FIXED_OVERHEAD +
       ClassSize.REENTRANT_LOCK + ClassSize.ATOMIC_LONG +
       ClassSize.COPYONWRITE_ARRAYSET + ClassSize.COPYONWRITE_ARRAYLIST +
@@ -645,11 +643,11 @@ public class MemStore implements HeapSize {
    * @return Size
    */
   long heapSizeChange(final KeyValue kv, final boolean notpresent) {
-    return notpresent ?
+    return notpresent ? 
         ClassSize.align(ClassSize.CONCURRENT_SKIPLISTMAP_ENTRY + kv.heapSize()):
         0;
   }
-
+  
   /**
    * Get the entire heap usage for this MemStore not including keys in the
    * snapshot.
@@ -658,7 +656,7 @@ public class MemStore implements HeapSize {
   public long heapSize() {
     return size.get();
   }
-
+  
   /**
    * Get the heap usage of KVs in this MemStore.
    */

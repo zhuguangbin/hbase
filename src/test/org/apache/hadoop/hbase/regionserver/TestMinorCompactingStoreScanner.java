@@ -27,7 +27,6 @@ import org.apache.hadoop.hbase.KeyValueTestUtil;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import static org.apache.hadoop.hbase.regionserver.KeyValueScanFixture.scanFixture;
 
 public class TestMinorCompactingStoreScanner extends TestCase {
 
@@ -46,8 +45,9 @@ public class TestMinorCompactingStoreScanner extends TestCase {
         KeyValueTestUtil.create("R1", "cf", "i", 11, KeyValue.Type.Put, "dont-care"),
         KeyValueTestUtil.create("R2", "cf", "a", 11, KeyValue.Type.Put, "dont-care"),
     };
-    List<KeyValueScanner> scanners = scanFixture(kvs);
-    
+    KeyValueScanner [] scanners = new KeyValueScanner[] {
+        new KeyValueScanFixture(KeyValue.COMPARATOR, kvs)
+    };
     InternalScanner scan =
         new MinorCompactingStoreScanner("cf", KeyValue.COMPARATOR, scanners);
     List<KeyValue> results = new ArrayList<KeyValue>();
@@ -77,7 +77,9 @@ public class TestMinorCompactingStoreScanner extends TestCase {
         KeyValueTestUtil.create("R1", "cf", "a", 10, KeyValue.Type.Delete, "dont-care"),
         KeyValueTestUtil.create("R1", "cf", "a", 10, KeyValue.Type.Put, "dont-care")
     };
-    List<KeyValueScanner> scanners = scanFixture(kvs);
+    KeyValueScanner [] scanners = new KeyValueScanner[] {
+        new KeyValueScanFixture(KeyValue.COMPARATOR, kvs)
+    };
     InternalScanner scan =
         new MinorCompactingStoreScanner("cf", KeyValue.COMPARATOR, scanners);
     List<KeyValue> results = new ArrayList<KeyValue>();

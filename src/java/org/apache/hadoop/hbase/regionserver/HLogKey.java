@@ -29,15 +29,15 @@ import java.io.*;
 
 /**
  * A Key for an entry in the change log.
- *
- * The log intermingles edits to many tables and rows, so each log entry
- * identifies the appropriate table and row.  Within a table and row, they're
+ * 
+ * The log intermingles edits to many tables and rows, so each log entry 
+ * identifies the appropriate table and row.  Within a table and row, they're 
  * also sorted.
- *
+ * 
  * <p>Some Transactional edits (START, COMMIT, ABORT) will not have an
  * associated row.
  */
-public class HLogKey implements WritableComparable<HLogKey> {
+public class HLogKey implements WritableComparable<HLogKey>, HeapSize {
   private byte [] regionName;
   private byte [] tablename;
   private long logSeqNum;
@@ -50,7 +50,7 @@ public class HLogKey implements WritableComparable<HLogKey> {
   public HLogKey() {
     this(null, null, 0L, HConstants.LATEST_TIMESTAMP);
   }
-
+  
   /**
    * Create the log key!
    * We maintain the tablename mainly for debugging purposes.
@@ -77,7 +77,7 @@ public class HLogKey implements WritableComparable<HLogKey> {
   public byte [] getRegionName() {
     return regionName;
   }
-
+  
   /** @return table name */
   public byte [] getTablename() {
     return tablename;
@@ -87,7 +87,7 @@ public class HLogKey implements WritableComparable<HLogKey> {
   public long getLogSeqNum() {
     return logSeqNum;
   }
-
+  
   void setLogSeqNum(long logSeqNum) {
     this.logSeqNum = logSeqNum;
   }
@@ -104,7 +104,7 @@ public class HLogKey implements WritableComparable<HLogKey> {
     return Bytes.toString(tablename) + "/" + Bytes.toString(regionName) + "/" +
       logSeqNum;
   }
-
+  
   @Override
   public boolean equals(Object obj) {
     if (this == obj) {
@@ -115,7 +115,7 @@ public class HLogKey implements WritableComparable<HLogKey> {
     }
     return compareTo((HLogKey)obj) == 0;
   }
-
+  
   @Override
   public int hashCode() {
     int result = Bytes.hashCode(this.regionName);
@@ -149,7 +149,7 @@ public class HLogKey implements WritableComparable<HLogKey> {
     out.writeLong(logSeqNum);
     out.writeLong(this.writeTime);
   }
-
+  
   public void readFields(DataInput in) throws IOException {
     this.regionName = Bytes.readByteArray(in);
     this.tablename = Bytes.readByteArray(in);
@@ -157,4 +157,7 @@ public class HLogKey implements WritableComparable<HLogKey> {
     this.writeTime = in.readLong();
   }
 
+  public long heapSize() {
+    return this.regionName.length + this.tablename.length + HEAP_TAX;
+  }
 }

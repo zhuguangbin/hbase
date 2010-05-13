@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.apache.hadoop.fs.Path;
@@ -37,16 +36,13 @@ import org.apache.hadoop.hbase.ipc.HRegionInterface;
 import org.apache.hadoop.hbase.regionserver.HLog;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.hadoop.hbase.master.RegionManager.RegionState;
 
-/**
+/** 
  * Instantiated when a server's lease has expired, meaning it has crashed.
  * The region server's log file needs to be split up for each region it was
  * serving, and the regions need to get reassigned.
  */
 class ProcessServerShutdown extends RegionServerOperation {
-  // Server name made of the concatenation of hostname, port and startcode
-  // formatted as <code>&lt;hostname> ',' &lt;port> ',' &lt;startcode></code>
   private final String deadServer;
   private boolean isRootServer;
   private List<MetaRegion> metaRegions;
@@ -56,12 +52,15 @@ class ProcessServerShutdown extends RegionServerOperation {
   private boolean rootRescanned;
   private HServerAddress deadServerAddress;
 
+
   private static class ToDoEntry {
     boolean regionOffline;
+    final byte [] row;
     final HRegionInfo info;
 
-    ToDoEntry(final HRegionInfo info) {
+    ToDoEntry(final byte [] row, final HRegionInfo info) {
       this.regionOffline = false;
+      this.row = row;
       this.info = info;
     }
   }
@@ -81,51 +80,32 @@ class ProcessServerShutdown extends RegionServerOperation {
 
     // check to see if I am responsible for either ROOT or any of the META tables.
 
-    // TODO Why do we do this now instead of at processing time?
     closeMetaRegions();
   }
 
   private void closeMetaRegions() {
-    this.isRootServer =
-      this.master.regionManager.isRootServer(this.deadServerAddress) ||
-      this.master.regionManager.isRootInTransitionOnThisServer(deadServer);
-    if (this.isRootServer) {
-      this.master.regionManager.unsetRootRegion();
+    isRootServer = master.regionManager.isRootServer(deadServerAddress);
+    if (isRootServer) {
+      master.regionManager.unsetRootRegion();
+    }  else {
+      //HBASE-1928: Check whether this server has been transitioning the ROOT table
+      isRootServer = master.regionManager.isRootServerCandidate (deadServer);
+      if (isRootServer) {
+        master.regionManager.unsetRootRegion();
+      }
     }
-    List<byte[]> metaStarts =
-      this.master.regionManager.listMetaRegionsForServer(deadServerAddress);
+    List<byte[]> metaStarts = master.regionManager.listMetaRegionsForServer(deadServerAddress);
 
-    this.metaRegions = new ArrayList<MetaRegion>();
-    for (byte [] startKey: metaStarts) {
-      MetaRegion r = master.regionManager.offlineMetaRegionWithStartKey(startKey);
-      this.metaRegions.add(r);
+    metaRegions = new ArrayList<MetaRegion>();
+    for (byte [] region : metaStarts) {
+      MetaRegion r = master.regionManager.offlineMetaRegion(region);
+      metaRegions.add(r);
     }
 
     //HBASE-1928: Check whether this server has been transitioning the META table
-    HRegionInfo metaServerRegionInfo =
-      master.regionManager.getMetaServerRegionInfo (deadServer);
+    HRegionInfo metaServerRegionInfo = master.regionManager.getMetaServerRegionInfo (deadServer);
     if (metaServerRegionInfo != null) {
       metaRegions.add (new MetaRegion (deadServerAddress, metaServerRegionInfo));
-    }
-  }
-
-  /**
-   * @return Name of server we are processing.
-   */
-  public HServerAddress getDeadServerAddress() {
-    return this.deadServerAddress;
-  }
-
-  private void closeRegionsInTransition() {
-    Map<String, RegionState> inTransition =
-      master.regionManager.getRegionsInTransitionOnServer(deadServer);
-    for (Map.Entry<String, RegionState> entry : inTransition.entrySet()) {
-      String regionName = entry.getKey();
-      RegionState state = entry.getValue();
-
-      LOG.info("Region " + regionName + " was in transition " +
-          state + " on dead server " + deadServer + " - marking unassigned");
-      master.regionManager.setUnassigned(state.getRegionInfo(), true);
     }
   }
 
@@ -159,7 +139,7 @@ class ProcessServerShutdown extends RegionServerOperation {
         // Check server name.  If null, skip (We used to consider it was on
         // shutdown server but that would mean that we'd reassign regions that
         // were already out being assigned, ones that were product of a split
-        // that happened while the shutdown was being processed).
+        // that happened while the shutdown was being processed.
         String serverAddress = BaseScanner.getServerAddress(values);
         long startCode = BaseScanner.getStartCode(values);
 
@@ -177,6 +157,7 @@ class ProcessServerShutdown extends RegionServerOperation {
             Bytes.toString(row));
         }
 
+//        HRegionInfo info = master.getHRegionInfo(row, values.rowResult());
         HRegionInfo info = master.getHRegionInfo(row, values);
         if (info == null) {
           emptyRows.add(row);
@@ -190,10 +171,10 @@ class ProcessServerShutdown extends RegionServerOperation {
                   Bytes.toString(info.getRegionName()) +
               " from online meta regions");
             }
-            master.regionManager.offlineMetaRegionWithStartKey(info.getStartKey());
+            master.regionManager.offlineMetaRegion(info.getStartKey());
           }
 
-          ToDoEntry todo = new ToDoEntry(info);
+          ToDoEntry todo = new ToDoEntry(row, info);
           toDoList.add(todo);
 
           if (master.regionManager.isOfflined(info.getRegionNameAsString()) ||
@@ -223,7 +204,7 @@ class ProcessServerShutdown extends RegionServerOperation {
     }
 
     // Scan complete. Remove any rows which had empty HRegionInfos
-
+    
     if (emptyRows.size() > 0) {
       LOG.warn("Found " + emptyRows.size() +
         " rows with empty HRegionInfo while scanning meta region " +
@@ -267,7 +248,7 @@ class ProcessServerShutdown extends RegionServerOperation {
     ScanMetaRegions(MetaRegion m, HMaster master) {
       super(m, master);
     }
-
+    
     public Boolean call() throws IOException {
       if (LOG.isDebugEnabled()) {
         LOG.debug("process server shutdown scanning " +
@@ -287,21 +268,21 @@ class ProcessServerShutdown extends RegionServerOperation {
     LOG.info("process shutdown of server " + this.deadServer +
       ": logSplit: " +
       logSplit + ", rootRescanned: " + rootRescanned +
-      ", numberOfMetaRegions: " +
+      ", numberOfMetaRegions: " + 
       master.regionManager.numMetaRegions() +
-      ", onlineMetaRegions.size(): " +
+      ", onlineMetaRegions.size(): " + 
       master.regionManager.numOnlineMetaRegions());
     if (!logSplit) {
       // Process the old log file
       if (master.fs.exists(oldLogDir)) {
-        if (!master.splitLogLock.tryLock()) {
+        if (!master.regionManager.splitLogLock.tryLock()) {
           return false;
         }
         try {
           HLog.splitLog(master.rootdir, oldLogDir, master.fs,
             master.getConfiguration());
         } finally {
-          master.splitLogLock.unlock();
+          master.regionManager.splitLogLock.unlock();
         }
       }
       logSplit = true;
@@ -343,7 +324,7 @@ class ProcessServerShutdown extends RegionServerOperation {
 
       if (LOG.isDebugEnabled()) {
         LOG.debug("process server shutdown scanning root region on " +
-          master.getRootRegionLocation().getBindAddress() +
+          master.getRootRegionLocation().getBindAddress() + 
           " finished " + Thread.currentThread().getName());
       }
       rootRescanned = true;
@@ -366,9 +347,6 @@ class ProcessServerShutdown extends RegionServerOperation {
           Bytes.toString(r.getRegionName()) + " on " + r.getServer());
       }
     }
-
-    closeRegionsInTransition();
-
     // Remove this server from dead servers list.  Finished splitting logs.
     this.master.serverManager.removeDeadServer(deadServer);
     if (LOG.isDebugEnabled()) {

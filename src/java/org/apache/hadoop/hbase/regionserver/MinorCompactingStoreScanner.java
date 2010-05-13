@@ -38,7 +38,7 @@ public class MinorCompactingStoreScanner implements KeyValueScanner, InternalSca
   private KeyValue.KVComparator comparator;
 
   MinorCompactingStoreScanner(Store store,
-                              List<KeyValueScanner> scanners) {
+                              KeyValueScanner [] scanners) {
     comparator = store.comparator;
     KeyValue firstKv = KeyValue.createFirstOnRow(HConstants.EMPTY_START_ROW);
     for (KeyValueScanner scanner : scanners ) {
@@ -49,7 +49,7 @@ public class MinorCompactingStoreScanner implements KeyValueScanner, InternalSca
   }
 
   MinorCompactingStoreScanner(String cfName, KeyValue.KVComparator comparator,
-                              List<KeyValueScanner> scanners) {
+                              KeyValueScanner [] scanners) {
     this.comparator = comparator;
 
     KeyValue firstKv = KeyValue.createFirstOnRow(HConstants.EMPTY_START_ROW);
@@ -117,12 +117,6 @@ public class MinorCompactingStoreScanner implements KeyValueScanner, InternalSca
     }
     close();
     return false;
-  }
-
-  @Override
-  public boolean next(List<KeyValue> results, int limit) throws IOException {
-    // should not use limits with minor compacting store scanner
-    return next(results);
   }
 
   public void close() {
