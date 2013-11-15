@@ -1,3 +1,11 @@
+# HBase DianPing Branch
+
+This is an internal version of HBase for DianPing inc. which is forked from apache HBase.
+Latest version is on branch cosmos-hbase-0.94, based on apache hbase release 0.94.13.
+We also fixed a few bugs, see more [here](https://github.com/dianping/hbase/commits/cosmos-hbase-0.94) 
+
+
+-------------------------
 Apache HBase [1] is an open-source, distributed, versioned, column-oriented
 store modeled after Google' Bigtable: A Distributed Storage System for
 Structured Data by Chang et al.[2]  Just as Bigtable leverages the distributed
