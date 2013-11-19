@@ -104,6 +104,74 @@ public class ThriftUtilities {
     }
     return out;
   }
+  
+
+
+  public static TGet getFromHBase(Get in) throws IOException {
+      TGet out = new TGet(ByteBuffer.wrap(in.getRow()));
+      
+      TTimeRange tr = new TTimeRange(in.getTimeRange().getMin(), in.getTimeRange().getMax());
+      out.setTimeRange(tr);
+      out.setMaxVersions(in.getMaxVersions());
+      // Filter
+      if (in.getFilter() != null) {
+          out.setFilterString(Bytes.toBytes(in.getFilter().toString()));
+      }
+      // Attributes
+      Map<ByteBuffer, ByteBuffer> attrMap = new HashMap<ByteBuffer, ByteBuffer>();
+      for(Map.Entry<String, byte[]> attrEntry: in.getAttributesMap().entrySet()){
+          attrMap.put(ByteBuffer.wrap(attrEntry.getKey().getBytes()), ByteBuffer.wrap(attrEntry.getValue()));
+      }
+      out.setAttributes(attrMap);
+      
+      List<TColumn> columns = new ArrayList<TColumn>();
+      for (Map.Entry<byte[], NavigableSet<byte[]>> familyEntry : in.getFamilyMap().entrySet()) {
+          TColumn column = new TColumn();
+          column.setFamily(familyEntry.getKey());
+          for (byte[] qualifier : familyEntry.getValue()) {
+              column.setQualifier(qualifier);
+          }
+          columns.add(column);
+      }
+      out.setColumns(columns);
+      return out;
+  }
+
+  public static List<TGet> getsFromHBase(List<Get> in) throws IOException {
+      List<TGet> out = new ArrayList<TGet>(in.size());
+      for (TGet tGet : out) {
+          out.add(tGet);
+      }
+      return out;
+  }
+  public static Result resultFromThrift(TResult in) {
+    List<KeyValue> kvs = new ArrayList<KeyValue>();
+
+    byte[] row = in.getRow();
+
+    List<TColumnValue> columnValues = in.getColumnValues();
+    for (TColumnValue tColumnValue : columnValues) {
+      byte[] family = tColumnValue.getFamily();
+      byte[] qualifier = tColumnValue.getQualifier();
+      long ts = tColumnValue.getTimestamp();
+      byte[] value = tColumnValue.getValue();
+
+      kvs.add(new KeyValue(row, family, qualifier, ts, value));
+    }
+
+    return new Result(kvs);
+  }
+  
+  
+  public static Result[] resultsFromThrift(List<TResult> in) {
+    List<Result> out = new ArrayList<Result>(in.size());
+
+    for (TResult result : in) {
+      out.add(resultFromThrift(result));
+    }
+
+    return out.toArray(new Result[out.size()]);
+  }
 
   /**
    * Creates a {@link TResult} (Thrift) from a {@link Result} (HBase).
@@ -203,6 +271,59 @@ public class ThriftUtilities {
     }
     return out;
   }
+  
+  
+  public static TPut putFromHBase(Put in) {
+    TPut out = new TPut();
+
+    out.setRow(ByteBuffer.wrap(in.getRow()));
+    out.setWriteToWal(in.getWriteToWAL());
+    if (in.getTimeStamp() != HConstants.LATEST_TIMESTAMP) {
+      out.setTimestamp(in.getTimeStamp());
+    }
+    
+    Map<ByteBuffer, ByteBuffer> attrMap = new HashMap<ByteBuffer, ByteBuffer>();
+    for(Map.Entry<String, byte[]> attrEntry: in.getAttributesMap().entrySet()){
+        attrMap.put(ByteBuffer.wrap(attrEntry.getKey().getBytes()), ByteBuffer.wrap(attrEntry.getValue()));
+    }
+    out.setAttributes(attrMap);
+
+    List<TColumnValue> columnValues = new ArrayList<TColumnValue>();
+    // Map<family, List<KeyValue>>
+    for (Map.Entry<byte[], List<KeyValue>> familyEntry : in.getFamilyMap().entrySet()) {
+      TColumnValue columnValue = new TColumnValue();
+
+      for (KeyValue keyValue : familyEntry.getValue()) {
+          byte[] family = keyValue.getFamily();
+          byte[] qualifier = keyValue.getQualifier();
+          long timestamp = keyValue.getTimestamp();
+          byte[] value = keyValue.getValue();
+          if (family != null) {
+            columnValue.setFamily(family);
+          }
+          if (qualifier != null) {
+            columnValue.setQualifier(qualifier);
+          }
+          if (timestamp != HConstants.LATEST_TIMESTAMP) {
+            columnValue.setTimestamp(keyValue.getTimestamp());
+          }
+          columnValue.setValue(value);
+       }
+       columnValues.add(columnValue);
+    }
+
+    out.setColumnValues(columnValues);
+    return out;
+  }
+
+
+public static List<TPut> putsFromHBase(List<Put> in) {
+    List<TPut> out = new ArrayList<TPut>();
+    for (Put put : in) {
+        out.add(putFromHBase(put));
+    }
+    return out;
+  }
 
   /**
    * Creates a {@link Delete} (HBase) from a {@link TDelete} (Thrift).
@@ -287,6 +408,13 @@ public class ThriftUtilities {
     if (rowTimestamp != HConstants.LATEST_TIMESTAMP) {
       out.setTimestamp(rowTimestamp);
     }
+    
+    // Attributes
+    Map<ByteBuffer, ByteBuffer> attrMap = new HashMap<ByteBuffer, ByteBuffer>();
+    for(Map.Entry<String, byte[]> attrEntry: in.getAttributesMap().entrySet()){
+        attrMap.put(ByteBuffer.wrap(attrEntry.getKey().getBytes()), ByteBuffer.wrap(attrEntry.getValue()));
+    }
+    out.setAttributes(attrMap);
 
     // Map<family, List<KeyValue>>
     for (Map.Entry<byte[], List<KeyValue>> familyEntry : in.getFamilyMap().entrySet()) {
@@ -344,6 +472,24 @@ public class ThriftUtilities {
     }
     return out;
   }
+  
+  public static TRowMutations rowMutationsFromHBase(RowMutations in) throws IOException {
+      TRowMutations out = new TRowMutations();
+      out.setRow(ByteBuffer.wrap(in.getRow()));
+      List<Mutation> mutations = in.getMutations();
+      for (Mutation mutation : mutations) {
+          TMutation tmutation = new TMutation();
+          if (mutation instanceof Put) {
+            tmutation.setPut(putFromHBase((Put)mutation));
+          }
+          if (mutation instanceof Delete) {
+            tmutation.setDeleteSingle(deleteFromHBase((Delete)mutation));
+        }
+        out.addToMutations(tmutation);
+    }
+      return out;
+  }
+  
 
   public static Scan scanFromThrift(TScan in) throws IOException {
     Scan out = new Scan();
@@ -389,6 +535,57 @@ public class ThriftUtilities {
 
     return out;
   }
+  
+  public static TScan scanFromHBase(Scan in) throws IOException {
+    TScan out = new TScan();
+    
+    if (in.getBatch() != -1) {
+        out.setBatchSize(in.getBatch());
+    }
+
+    if (in.getCaching() != -1) {
+      out.setCaching(in.getCaching());
+    }
+
+    if (in.getMaxVersions() != 1) {
+      out.setMaxVersions(in.getMaxVersions());
+    }
+
+    if (in.getTimeRange().getMin() != 0L || in.getTimeRange().getMax() != Long.MAX_VALUE) {
+      TTimeRange tr = new TTimeRange(in.getTimeRange().getMin(), in.getTimeRange().getMax());
+      out.setTimeRange(tr);
+    }
+
+    if (in.getStartRow() != HConstants.EMPTY_START_ROW) {
+      out.setStartRow(in.getStartRow());
+    }
+    if (in.getStopRow() != HConstants.EMPTY_END_ROW) {
+      out.setStopRow(in.getStopRow());
+    }
+    
+    // Filter
+    if (in.getFilter() != null) {
+        out.setFilterString(Bytes.toBytes(in.getFilter().toString()));
+    }
+    // Attributes
+    Map<ByteBuffer, ByteBuffer> attrMap = new HashMap<ByteBuffer, ByteBuffer>();
+    for(Map.Entry<String, byte[]> attrEntry: in.getAttributesMap().entrySet()){
+        attrMap.put(ByteBuffer.wrap(attrEntry.getKey().getBytes()), ByteBuffer.wrap(attrEntry.getValue()));
+    }
+    out.setAttributes(attrMap);
+
+    List<TColumn> columns = new ArrayList<TColumn>();
+    for (Map.Entry<byte[], NavigableSet<byte[]>> familyEntry : in.getFamilyMap().entrySet()) {
+      TColumn column = new TColumn();
+      column.setFamily(familyEntry.getKey());
+      for (byte[] qualifier : familyEntry.getValue()) {
+        column.setQualifier(qualifier);
+      }
+      columns.add(column);
+    }
+    out.setColumns(columns);
+    return out;
+}
 
   public static Increment incrementFromThrift(TIncrement in) throws IOException {
     Increment out = new Increment(in.getRow());
@@ -399,6 +596,26 @@ public class ThriftUtilities {
     out.setWriteToWAL(in.isWriteToWal());
     return out;
   }
+  
+  
+  public static TIncrement incrementFromHBase(Increment in) throws IOException {
+    TIncrement out = new TIncrement();
+    out.setRow(in.getRow());
+    out.setWriteToWal(in.getWriteToWAL());
+    
+    List<TColumnIncrement> columnIncrements = new ArrayList<TColumnIncrement>();
+    for (Map.Entry<byte[], NavigableMap<byte[], Long>> familyEntry : in.getFamilyMap().entrySet()) {
+        TColumnIncrement columnIncrement = new TColumnIncrement();
+        columnIncrement.setFamily(familyEntry.getKey());
+        for (Map.Entry<byte[], Long> increment : familyEntry.getValue().entrySet()) {
+            columnIncrement.setQualifier(increment.getKey());
+            columnIncrement.setAmount(increment.getValue());
+        }
+    columnIncrements.add(columnIncrement);
+  }
+  out.setColumns(columnIncrements);
+  return out;
+}
 
   /**
    * Adds all the attributes into the Operation object
