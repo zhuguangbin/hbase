@@ -205,9 +205,8 @@ public class ColumnRangeFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + " "
-        + (this.minColumnInclusive ? "[" : "(") + Bytes.toStringBinary(this.minColumn)
-        + ", " + Bytes.toStringBinary(this.maxColumn)
-        + (this.maxColumnInclusive ? "]" : ")");
+	return String.format("%s ('%s', %s, '%s', %s)", this.getClass().getSimpleName(), 
+			Bytes.toStringBinary(this.minColumn).replaceAll("'", "''"), this.minColumnInclusive,
+			Bytes.toStringBinary(this.maxColumn).replaceAll("'", "''"), this.maxColumnInclusive);
   }
 }

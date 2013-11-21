@@ -159,9 +159,10 @@ public abstract class CompareFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return String.format("%s (%s, %s)",
+    return String.format("%s (%s, '%s')",
         this.getClass().getSimpleName(),
-        this.compareOp.name(),
-        Bytes.toStringBinary(this.comparator.getValue()));
+        Bytes.toStringBinary(ComparatorUtil.toSymbol(this.compareOp)),
+        Bytes.toStringBinary(ComparatorUtil.getComparatorType(this.comparator))+":"+Bytes.toStringBinary(this.comparator.getValue()).replaceAll("'", "''"));
   }
+  
 }

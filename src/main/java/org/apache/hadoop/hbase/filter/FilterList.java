@@ -375,7 +375,7 @@ public class FilterList implements Filter {
 
   @Override
   public String toString() {
-    return toString(MAX_LOG_FILTERS);
+    return toStringFull();
   }
 
   protected String toString(int maxFilters) {
@@ -387,5 +387,20 @@ public class FilterList implements Filter {
         endIndex,
         this.filters.size(),
         this.filters.subList(0, endIndex).toString());
+  }
+  
+  protected String toStringFull() {
+	StringBuilder filterString = new StringBuilder();
+	
+	String andOr = this.operator == Operator.MUST_PASS_ALL ? "AND" : "OR";
+	int count = 0;
+	for (Filter filter: this.filters) {
+		++count;
+		filterString.append(filter.toString());
+		if (count < this.filters.size()) {
+			filterString.append(" ").append(andOr).append(" ");
+		}
+	}
+	return filterString.toString();
   }
 }

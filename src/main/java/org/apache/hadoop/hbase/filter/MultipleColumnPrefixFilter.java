@@ -140,7 +140,7 @@ public class MultipleColumnPrefixFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return toString(MAX_LOG_PREFIXES);
+    return toStringFull();
   }
 
   protected String toString(int maxPrefixes) {
@@ -161,4 +161,19 @@ public class MultipleColumnPrefixFilter extends FilterBase {
     return String.format("%s (%d/%d): [%s]", this.getClass().getSimpleName(),
         count, this.sortedPrefixes.size(), prefixes.toString());
   }
+  
+  protected String toStringFull() {
+	    StringBuilder prefixes = new StringBuilder();
+
+	    int count = 0;
+	    for (byte[] ba : this.sortedPrefixes) {
+	      ++count;
+	      prefixes.append("'").append(Bytes.toStringBinary(ba).replaceAll("'", "''")).append("'");
+	      if (count < this.sortedPrefixes.size()) {
+	        prefixes.append(", ");
+	      }
+	    }
+
+	    return String.format("%s (%s)", this.getClass().getSimpleName(), prefixes.toString());
+	  }
 }

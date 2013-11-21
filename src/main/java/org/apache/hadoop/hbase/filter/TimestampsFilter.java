@@ -133,7 +133,7 @@ public class TimestampsFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return toString(MAX_LOG_TIMESTAMPS);
+    return toStringFull();
   }
 
   protected String toString(int maxTimestamps) {
@@ -153,5 +153,21 @@ public class TimestampsFilter extends FilterBase {
 
     return String.format("%s (%d/%d): [%s]", this.getClass().getSimpleName(),
         count, this.timestamps.size(), tsList.toString());
+  }
+  
+    protected String toStringFull() {
+    StringBuilder tsList = new StringBuilder();
+
+    if (this.timestamps != null) {
+    	int count = 0;
+        for (Long ts : this.timestamps) {
+          ++count;
+          tsList.append(ts.toString());
+          if (count < this.timestamps.size()) {
+            tsList.append(", ");
+          }
+        }
+	}
+    return String.format("%s (%s)", this.getClass().getSimpleName(), tsList.toString());
   }
 }

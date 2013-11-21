@@ -170,6 +170,6 @@ public abstract class FilterBase implements Filter {
    * Return filter's info for debugging and logging purpose.
    */
   public String toString() {
-    return this.getClass().getSimpleName();
+    return this.getClass().getSimpleName() + " ()";
   }
 }

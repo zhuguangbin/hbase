@@ -239,12 +239,12 @@ public class DependentColumnFilter extends CompareFilter {
 
   @Override
   public String toString() {
-    return String.format("%s (%s, %s, %s, %s, %s)",
+    return String.format("%s ('%s', '%s', %s, %s, '%s')",
         this.getClass().getSimpleName(),
         Bytes.toStringBinary(this.columnFamily),
         Bytes.toStringBinary(this.columnQualifier),
         this.dropDependentColumn,
-        this.compareOp.name(),
-        this.comparator != null ? Bytes.toStringBinary(this.comparator.getValue()) : "null");
+        Bytes.toStringBinary(ComparatorUtil.toSymbol(this.compareOp)),
+        this.comparator != null ? Bytes.toStringBinary(ComparatorUtil.getComparatorType(this.comparator))+":"+Bytes.toStringBinary(this.comparator.getValue()).replaceAll("'", "''") : "null");
   }
 }

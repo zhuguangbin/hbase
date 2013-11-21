@@ -318,9 +318,10 @@ public class SingleColumnValueFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return String.format("%s (%s, %s, %s, %s)",
+    return String.format("%s ('%s', '%s', %s, '%s', %s , %s)",
         this.getClass().getSimpleName(), Bytes.toStringBinary(this.columnFamily),
-        Bytes.toStringBinary(this.columnQualifier), this.compareOp.name(),
-        Bytes.toStringBinary(this.comparator.getValue()));
+        Bytes.toStringBinary(this.columnQualifier).replaceAll("'", "''"), Bytes.toStringBinary(ComparatorUtil.toSymbol(this.compareOp)),
+        Bytes.toStringBinary(ComparatorUtil.getComparatorType(this.comparator))+":"+Bytes.toStringBinary(this.comparator.getValue()).replaceAll("'", "''"), 
+        this.filterIfMissing, this.latestVersionOnly);
   }
 }

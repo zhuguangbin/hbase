@@ -91,6 +91,6 @@ public class PageFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + " " + this.pageSize;
+    return this.getClass().getSimpleName() + " (" + this.pageSize + ")";
   }
 }

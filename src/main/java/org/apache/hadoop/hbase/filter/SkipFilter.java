@@ -101,6 +101,6 @@ public class SkipFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + " " + this.filter.toString();
+    return "SKIP " + this.filter.toString();
   }
 }

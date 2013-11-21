@@ -92,6 +92,6 @@ public class InclusiveStopFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + " " + Bytes.toStringBinary(this.stopRowKey);
+    return this.getClass().getSimpleName() + " ('" + Bytes.toStringBinary(this.stopRowKey).replaceAll("'", "''") + "')";
   }
 }

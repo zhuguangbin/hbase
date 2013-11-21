@@ -102,6 +102,6 @@ public class WhileMatchFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + " " + this.filter.toString();
+    return "WHILE " + this.filter.toString();
   }
 }

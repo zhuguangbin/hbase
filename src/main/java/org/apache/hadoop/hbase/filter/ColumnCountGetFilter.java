@@ -92,6 +92,6 @@ public class ColumnCountGetFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + " " + this.limit;
+    return this.getClass().getSimpleName() + " (" + this.limit + ")";
   }
 }

@@ -95,6 +95,6 @@ public class PrefixFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return this.getClass().getSimpleName() + " " + Bytes.toStringBinary(this.prefix);
+    return this.getClass().getSimpleName() + " ('" + Bytes.toStringBinary(this.prefix).replaceAll("'", "''") + "')";
   }
 }
