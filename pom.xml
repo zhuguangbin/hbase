@@ -1672,7 +1672,7 @@
         <hadoop.version>1.0.4</hadoop.version>
       </properties>
       <build>
-        <finalName>${project.artifactId}-${project.version}-security</finalName>
+<!--         <finalName>${project.artifactId}-${project.version}-security</finalName> -->
         <plugins>
           <plugin>
             <groupId>org.codehaus.mojo</groupId>
@@ -1714,6 +1714,22 @@
                       </includes>
                     </resource>
                   </resources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>default-jar</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+                <configuration>
+                  <classifier>security</classifier>
                 </configuration>
               </execution>
             </executions>
